@@ -22,6 +22,7 @@ window.InkWriter={mount({host,work,chapter,chapterId,userId,save,onSaved,notify}
   <dialog id="writerDialog" class="writer-dialog" aria-labelledby="writerDialogTitle"><form method="dialog" class="stack"><h2 id="writerDialogTitle">Вставить блок</h2><label class="field">Заголовок / имя говорящего<input class="input" id="blockTitle" maxlength="100"></label><label class="field">Содержимое<textarea class="input" id="blockBody" rows="6"></textarea></label><label class="field" id="alignmentField" hidden>Выравнивание<select id="blockAlignment"><option value="left">Слева</option><option value="center">По центру</option><option value="right">Справа</option></select></label><div class="action-row"><button class="btn" value="insert">Вставить</button><button class="btn ghost" value="cancel" formnovalidate>Отмена</button></div></form></dialog></div>`;
   const $=s=>host.querySelector(s),ta=$('#bodyEd'),title=$('[name=title]'),notes=$('#writerNotes'),dialog=$('#writerDialog');
   notes.value=localStorage.getItem(key+'_notes')||'';
+  let tools=null;
   let timer,dirty=false,disposed=false,clean=false,history=[{body:ta.value,start:0,end:0}],pos=0,pendingBlock='',selection=[0,0];
   const snapshot=()=>({title:title.value,body:ta.value,notes:notes.value,at:Date.now()});
   const persist=()=>{clearTimeout(timer);if(!dirty||clean)return;try{localStorage.setItem(key,JSON.stringify(snapshot()));$('#draftStatus').textContent='Локальная версия сохранена · '+new Date().toLocaleTimeString('ru');}catch(_){$('#draftStatus').textContent='Не удалось сохранить локально. Скачайте текст.';}};
@@ -34,7 +35,7 @@ window.InkWriter={mount({host,work,chapter,chapterId,userId,save,onSaved,notify}
     $('.writer-panels').classList.toggle('without-preview',!settings.preview);
     const fonts={serif:'var(--body)',sans:'var(--ui)',mono:'monospace'};
     [ta,$('#chapterPreview')].forEach(el=>{el.style.fontFamily=fonts[settings.font]||fonts.serif;el.style.fontSize=Math.min(32,Math.max(14,Number(settings.size)||20))+'px';el.style.lineHeight=String(settings.leading);});
-    $('#togglePreview').setAttribute('aria-pressed',String(settings.preview));
+    $('#togglePreview').setAttribute('aria-pressed',String(settings.preview));tools?.update();
   };
   const changed=()=>{dirty=true;clean=false;$('#draftStatus').textContent='Изменения…';remember();redraw();clearTimeout(timer);timer=setTimeout(persist,400);};
   const replace=(text)=>{ta.setRangeText(text,selection[0],selection[1],'end');ta.focus();changed();};
@@ -66,7 +67,7 @@ window.InkWriter={mount({host,work,chapter,chapterId,userId,save,onSaved,notify}
   for(const [id,prop] of [['writerFont','font'],['writerSize','size'],['writerLeading','leading'],['writerGoal','goal']])$('#'+id).addEventListener('change',e=>{settings[prop]=prop==='font'?e.target.value:Math.max(1,Number(e.target.value)||1);redraw();localStorage.setItem('chernila_workshop_settings',JSON.stringify(settings));});
   $('#togglePreview').addEventListener('click',()=>{settings.preview=!settings.preview;redraw();localStorage.setItem('chernila_workshop_settings',JSON.stringify(settings));});
   $('#toggleFocus').addEventListener('click',()=>{const on=document.body.classList.toggle('writer-focus');$('#toggleFocus').setAttribute('aria-pressed',String(on));});
-  $('#exportDraft').addEventListener('click',()=>{const url=URL.createObjectURL(new Blob([title.value+'\n\n'+ta.value],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=(title.value||'Глава').replace(/[\\/:*?"<>|]/g,'_')+'.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+  $('#exportDraft').addEventListener('click',()=>{const url=URL.createObjectURL(new Blob([title.value+'\n\n'+ta.value],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=InkWorkshopTools.fileName(title.value,'txt');document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);});
   $('#chapterForm').addEventListener('submit',async e=>{
     e.preventDefault();const status=e.submitter?.value||'draft';
     if(!title.value.trim()||!ta.value.trim()){notify('Заполните заголовок и текст главы',true);return;}
@@ -74,13 +75,16 @@ window.InkWriter={mount({host,work,chapter,chapterId,userId,save,onSaved,notify}
     const buttons=[...host.querySelectorAll('[type=submit]')];buttons.forEach(b=>b.disabled=true);persist();
     try{const saved=await save({title:title.value.trim(),body:ta.value,status});clean=true;dirty=false;clearTimeout(timer);
       // Retain private planning notes but not an outdated chapter backup.
-      localStorage.removeItem(key);
+      try{localStorage.removeItem(key);
       const notesKey=`chernila_workshop_${userId}_${work.id}_${saved?.id||chapterId}_notes`;
       if(notes.value)localStorage.setItem(notesKey,notes.value);else localStorage.removeItem(notesKey);
       if(notesKey!==key+'_notes')localStorage.removeItem(key+'_notes');
-      localStorage.removeItem('chernila_draft_'+work.id);if(!disposed)onSaved(status);
+      localStorage.removeItem('chernila_draft_'+work.id);}
+      catch(_){notify('Глава сохранена, но локальные заметки обновить не удалось. Скачайте резервную копию.',true);}
+      tools?.afterSaved(saved?.id);if(!disposed)onSaved(status);
     }catch(err){notify('Глава не сохранена: '+err.message,true);buttons.forEach(b=>b.disabled=false);}
   });
+  tools=InkWorkshopTools.mount({host,ta,title,notes,key,settings,changed,notify});
   const unload=()=>persist();addEventListener('pagehide',unload);redraw();
-  return ()=>{persist();disposed=true;clearTimeout(timer);removeEventListener('pagehide',unload);document.body.classList.remove('writer-focus');if(dialog.open)dialog.close();};
+  return ()=>{persist();disposed=true;tools?.dispose();clearTimeout(timer);removeEventListener('pagehide',unload);document.body.classList.remove('writer-focus');if(dialog.open)dialog.close();};
 }};

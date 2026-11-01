@@ -284,17 +284,9 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
 
-create or replace function public.auto_confirm_new_user() returns trigger
-language plpgsql security definer set search_path = public as $$
-begin
-  update auth.users
-     set email_confirmed_at = coalesce(email_confirmed_at, now()), updated_at = now()
-   where id = new.id;
-  return new;
-end $$;
+-- OAuth связывание требует подтверждённой почты. Не помечаем произвольный
+-- email подтверждённым автоматически; включите Confirm email в Supabase Auth.
 drop trigger if exists on_auth_user_auto_confirm on auth.users;
-create trigger on_auth_user_auto_confirm after insert on auth.users
-  for each row execute function public.auto_confirm_new_user();
 
 -- ============================================================
 -- После запуска: назначьте свой UUID основателем по ADMIN_SETUP.md.
@@ -438,3 +430,29 @@ $$;
 drop trigger if exists works_protect_ownership on public.works;
 create trigger works_protect_ownership before insert or update on public.works
   for each row execute function public.protect_work_ownership();
+
+-- ---------- Изображения профилей, Storage (v5) ----------
+-- В настоящем Supabase schema storage уже существует. В standalone Postgres
+-- без Storage блок пропускается: остальная платформа продолжает работать.
+do $storage_setup$
+begin
+  if to_regclass('storage.buckets') is not null and to_regclass('storage.objects') is not null then
+    execute $q$
+      insert into storage.buckets (id,name,public,file_size_limit,allowed_mime_types)
+      values ('profile-media','profile-media',true,1048576,array['image/png','image/jpeg','image/webp'])
+      on conflict (id) do update set public=true,file_size_limit=1048576,allowed_mime_types=array['image/png','image/jpeg','image/webp']
+    $q$;
+    execute 'drop policy if exists profile_media_read on storage.objects';
+    execute $q$create policy profile_media_read on storage.objects for select to anon,authenticated using (bucket_id='profile-media')$q$;
+    execute 'drop policy if exists profile_media_insert on storage.objects';
+    execute $q$create policy profile_media_insert on storage.objects for insert to authenticated with check (
+      bucket_id='profile-media' and (storage.foldername(name))[1]=auth.uid()::text
+      and name ~ '^[0-9a-f-]{36}/(avatarUrl|bannerUrl)-[0-9a-f-]{36}\.(webp|jpg|png)$'
+    )$q$;
+    execute 'drop policy if exists profile_media_delete on storage.objects';
+    execute $q$create policy profile_media_delete on storage.objects for delete to authenticated using (
+      bucket_id='profile-media' and (storage.foldername(name))[1]=auth.uid()::text
+    )$q$;
+  end if;
+end;
+$storage_setup$;

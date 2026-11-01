@@ -8,12 +8,13 @@ const clone=x=>JSON.parse(JSON.stringify(x));
 function harness({db,storage,remote}={}){
   const values=storage||new Map();
   if(db) values.set('chernila_db_v2',JSON.stringify(db));
-  const ctx={console,crypto:require('node:crypto').webcrypto,localStorage:{getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)},location:{reload(){}},fetch:remote};
+  const ephemeral=new Map();
+  const ctx={atob,URL,URLSearchParams,Blob,sessionStorage:{getItem:k=>ephemeral.get(k)||null,setItem:(k,v)=>ephemeral.set(k,v),removeItem:k=>ephemeral.delete(k)},console,crypto:require('node:crypto').webcrypto,localStorage:{getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)},location:{reload(){}},fetch:remote};
   ctx.window=ctx;
   if(remote) ctx.CHERNILA_SUPABASE_CONFIG={url:'https://example.invalid',anonKey:'public'};
   vm.createContext(ctx);
-  for(const file of ['data.js','store.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),ctx);
-  return {ctx,store:ctx.Store,storage:values};
+  for(const file of ['data.js','profile-tools.js','store.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),ctx);
+  return {ctx,store:ctx.Store,storage:values,ephemeral};
 }
 async function founder(store){await store.login({login:'cnizroman',password:'demo1234'});}
 const input=(workIds,extra={})=>({title:'Мой цикл',kind:'trilogy',description:'Описание',workIds,...extra});
@@ -171,4 +172,65 @@ test('source ownership is repaired and external legacy links cannot execute scri
   const next=harness({db});await next.store.init();assert.equal(next.store.state.works[0].authorId,'cnizroman');
   const remote=async url=>({ok:true,text:async()=>JSON.stringify(new URL(url).pathname.endsWith('/works')?[{id:'foreign-work',author_id:'writer',title:'Текст',legacy_url:'javascript:alert(1)'}]:[])});
   const cloud=harness({remote});await cloud.store.init();assert.equal(cloud.store.state.works.find(w=>w.id==='foreign-work').legacyUrl,null);
+});
+
+
+test('profile media is uploaded with a binary content type and is owned by current user',async()=>{
+ const requests=[];
+ const remote=async(url,opts={})=>{requests.push({url,opts});return {ok:true,text:async()=>JSON.stringify([])};};
+ const {store}=harness({remote});await store.init();store.state.authors.push({id:'writer',username:'writer'});store.setSession({authorId:'writer',token:'test'});
+ const result=await store.uploadProfileImage(new Blob(['image bytes'],{type:'image/webp'}),'avatarUrl');
+ assert.match(result,/profile-media\/writer\/avatarUrl-/);
+ const upload=requests.find(r=>r.opts.method==='POST');assert.equal(upload.opts.headers['Content-Type'],'image/webp');assert.ok(upload.opts.body instanceof Blob);
+ await assert.rejects(store.uploadProfileImage(new Blob(['x'],{type:'image/svg+xml'}),'avatarUrl'));
+ await store.removeProfileImage('https://example.invalid/storage/v1/object/public/profile-media/someone-else/file.webp');assert.equal(requests.filter(r=>r.opts.method==='DELETE').length,0);
+ await store.removeProfileImage(result);assert.equal(requests.filter(r=>r.opts.method==='DELETE').length,1);
+});
+
+test('OAuth is real linking only: local and link-only networks cannot claim connected status',async()=>{
+ const {store}=harness();await store.init();await founder(store);
+ await assert.rejects(store.beginSocialLink('github'),/общей базой/);
+ assert.deepEqual(clone(await store.socialIdentities()),[]);
+});
+
+test('OAuth callback validates nonce, account and actual identity; token is stripped from URL',async()=>{
+ let returnedId='writer';
+ const remote=async(url,opts={})=>({ok:true,text:async()=>JSON.stringify(new URL(url).pathname==='/auth/v1/user'?{id:returnedId,identities:[{provider:'github'}]}:[])});
+ const {store,ctx,ephemeral}=harness({remote});await store.init();store.setSession({authorId:'writer',token:'old'});
+ let clean='';ctx.history={replaceState:(_,__,url)=>{clean=url;}};
+ const attempt=async(nonce='nonce',expires=Date.now()+60000)=>{ephemeral.set('chernila_social_pending',JSON.stringify({nonce:'nonce',expires,authorId:'writer',provider:'github'}));ctx.location.href='https://site.test/Ink/?ink_social='+nonce+'#access_token=new-token&refresh_token=refresh';await store.completeSocialReturn();return JSON.parse(ephemeral.get('chernila_social_result'));};
+ assert.equal((await attempt()).ok,true);assert.equal(store.session.token,'new-token');assert.ok(!clean.includes('token'));assert.equal(clean,'/Ink/#/profile');
+ store.setSession({authorId:'writer',token:'old'});returnedId='someone-else';assert.equal((await attempt()).ok,false);assert.equal(store.session.token,'old');
+ returnedId='writer';assert.equal((await attempt('wrong-nonce')).ok,false);assert.equal(store.session.token,'old');
+ assert.equal((await attempt('nonce',1)).ok,false);
+});
+
+test('cloud rejects data URLs in profiles and does not allow last identity to be unlinked',async()=>{
+ const remote=async url=>({ok:true,text:async()=>JSON.stringify(new URL(url).pathname==='/auth/v1/user'?{id:'writer',identities:[{identity_id:'one',provider:'github'}]}:[])});
+ const {store}=harness({remote});await store.init();store.state.authors.push({id:'writer',username:'writer',displayName:'Writer'});store.setSession({authorId:'writer',token:'test'});
+ await assert.rejects(store.updateProfile({customization:{avatarUrl:'data:image/png;base64,AAAA'}}));
+ await assert.rejects(store.unlinkSocial('one'),/последний/);
+});
+
+
+test('refresh tokens renew cloud sessions without granting a different identity',async()=>{
+ const storage=new Map(),expired='x.'+Buffer.from(JSON.stringify({exp:1})).toString('base64url')+'.x';
+ storage.set('chernila_session_v2',JSON.stringify({authorId:'writer',token:expired,refreshToken:'old-refresh',expiresAt:1}));
+ let refreshed=false;
+ const remote=async(url,opts={})=>{if(new URL(url).pathname==='/auth/v1/token'){refreshed=true;assert.equal(JSON.parse(opts.body).refresh_token,'old-refresh');return {ok:true,text:async()=>JSON.stringify({access_token:'renewed',refresh_token:'new-refresh',expires_in:3600,user:{id:'writer'}})};}return {ok:true,text:async()=>JSON.stringify(new URL(url).pathname==='/rest/v1/profiles'?[{id:'writer',username:'writer'}]:[])};};
+ const {store}=harness({storage,remote});await store.init();assert.ok(refreshed);assert.equal(store.session.token,'renewed');assert.equal(store.currentUser().id,'writer');
+});
+
+
+test('OAuth cancellation scrubs error parameters and preserves the current account',async()=>{
+ const remote=async()=>({ok:true,text:async()=>JSON.stringify([])}),{store,ctx,ephemeral}=harness({remote});await store.init();store.setSession({authorId:'writer',token:'original'});
+ ephemeral.set('chernila_social_pending',JSON.stringify({nonce:'cancel',authorId:'writer',provider:'github',expires:Date.now()+60000}));let clean='';ctx.history={replaceState:(_,__,url)=>clean=url};ctx.location.href='https://site.test/Ink/?ink_social=cancel&error=access_denied&error_description=private#access_token=discard';
+ await store.completeSocialReturn();assert.equal(store.session.token,'original');assert.equal(clean,'/Ink/#/profile');assert.equal(JSON.parse(ephemeral.get('chernila_social_result')).ok,false);
+});
+
+test('expired-session requests share one refresh and never adopt another account',async()=>{
+ let refreshCount=0,wrong=false;
+ const remote=async(url,opts={})=>{if(new URL(url).pathname==='/auth/v1/token'){refreshCount++;await new Promise(resolve=>setTimeout(resolve,5));return {ok:true,text:async()=>JSON.stringify({access_token:'renewed',refresh_token:'refresh',expires_in:3600,user:{id:wrong?'someone-else':'writer'}})};}return {ok:true,text:async()=>JSON.stringify(new URL(url).pathname==='/auth/v1/user'?{id:'writer',identities:[]}:[])};};
+ const {store}=harness({remote});await store.init();store.state.authors.push({id:'writer',username:'writer'});store.setSession({authorId:'writer',token:'expired',refreshToken:'refresh',expiresAt:1});await Promise.all([store.socialIdentities(),store.socialIdentities()]);assert.equal(refreshCount,1);assert.equal(store.session.authorId,'writer');
+ wrong=true;store.setSession({authorId:'writer',token:'expired',refreshToken:'refresh',expiresAt:1});await assert.rejects(store.socialIdentities());assert.equal(store.session,null);
 });

@@ -14,13 +14,15 @@ const SB_URL=(cfg.url||'').replace(/\/$/,''), SB_KEY=cfg.publishableKey||cfg.ano
 
 const uid=()=> (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now().toString(36)+Math.random().toString(36).slice(2,10));
 const today=()=>new Date().toISOString().slice(0,10);
+function tokenExpiry(token){try{const p=String(token||'').split('.')[1];if(!p)return 0;return (JSON.parse(atob(p.replace(/-/g,'+').replace(/_/g,'/'))).exp||0)*1000;}catch(_){return 0;}}
 function clone(o){return JSON.parse(JSON.stringify(o))}
 function hash(s){let h=0;for(let i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i);h|=0}return 'h'+Math.abs(h)}
 
-function cleanCustomization(c={}){
+function cleanCustomization(c={},allowDataImages=false){
   const color=(v,f)=>/^#[0-9a-f]{6}$/i.test(v||'')?v:f;
   const url=v=>{v=String(v||'').trim();if(!v)return '';if(v.length>1000||!/^https:\/\//i.test(v))throw new Error('Ссылки должны начинаться с https:// и быть не длиннее 1000 символов.');return v;};
-  return {avatarUrl:url(c.avatarUrl),bannerUrl:url(c.bannerUrl),website:url(c.website),telegram:url(c.telegram),accent:color(c.accent,'#c8a96e'),bannerColor:color(c.bannerColor,'#302418'),pronouns:String(c.pronouns||'').slice(0,60),genres:(Array.isArray(c.genres)?c.genres:[]).map(String).slice(0,8).map(x=>x.slice(0,60)),layout:c.layout==='compact'?'compact':'expanded',showLocation:c.showLocation!==false,showStats:c.showStats!==false};
+  const media=v=>{v=String(v||'');if(allowDataImages&&/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(v)&&v.length<=1500000)return v;return url(v);};
+  return {avatarUrl:media(c.avatarUrl),bannerUrl:media(c.bannerUrl),socialLinks:InkProfileTools.cleanSocialLinks(c.socialLinks||[]),website:url(c.website),telegram:url(c.telegram),accent:color(c.accent,'#c8a96e'),bannerColor:color(c.bannerColor,'#302418'),pronouns:String(c.pronouns||'').slice(0,60),genres:(Array.isArray(c.genres)?c.genres:[]).map(String).slice(0,8).map(x=>x.slice(0,60)),layout:c.layout==='compact'?'compact':'expanded',showLocation:c.showLocation!==false,showStats:c.showStats!==false};
 }
 function safeLegacyUrl(id,url){const seed=window.CHERNILA_SEED.works.find(w=>w.id===id);return seed&&seed.legacyUrl===url?url:null;}
 function seedState(){
@@ -67,23 +69,28 @@ function loadLocal(){
   try{const raw=localStorage.getItem(LS_DB); if(raw){const d=JSON.parse(raw); if(d&&Array.isArray(d.works)){migrateLocal(d); injectFounder(d); ensureGroups(d); saveLocal(d); return d;}}}catch(e){}
   const s=seedState(); s.catalogVersion=3; ensureGroups(s); saveLocal(s); return s;
 }
-function saveLocal(state){ try{localStorage.setItem(LS_DB,JSON.stringify(state))}catch(e){} }
+function saveLocal(state){try{localStorage.setItem(LS_DB,JSON.stringify(state));return true;}catch(e){return false;}}
 
 /* ---------- Supabase REST ---------- */
-let sbToken=null;
+let sbToken=null,refreshFlight=null;
 let sbLive=false; // true только после успешной проверки таблиц платформы
 function sbHeaders(extra){return Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+(sbToken||SB_KEY),'Content-Type':'application/json','Prefer':'return=representation'},extra||{})}
 async function sbFetch(path,opts){
   if(!sbLive) return null; // локальный режим: в сеть не ходим вообще
+  const expires=Store.session?.expiresAt||tokenExpiry(sbToken),oldToken=sbToken,requestAuth=opts?.headers?.Authorization;
+  if(!path.startsWith('/auth/v1/token')&&sbToken&&Store.session?.refreshToken&&expires&&expires<Date.now()+60000&&(!requestAuth||requestAuth==='Bearer '+sbToken)){
+    try{if(!refreshFlight)refreshFlight=Store.refreshSession().finally(()=>{refreshFlight=null;});await refreshFlight;}catch(e){if((e.status===400||e.status===401)&&Store.session?.token===oldToken)Store.setSession(null);throw e;}
+    if(requestAuth)opts={...opts,headers:{...opts.headers,Authorization:'Bearer '+sbToken}};
+  }
   const r=await fetch(SB_URL+path,Object.assign({headers:sbHeaders()},opts||{}));
   const txt=await r.text(); let data=null; try{data=txt?JSON.parse(txt):null}catch(e){}
-  if(!r.ok) throw new Error((data&&(data.message||data.msg||data.error_description))||('Supabase '+r.status));
+  if(!r.ok){const error=new Error((data&&(data.message||data.msg||data.error_description))||('Supabase '+r.status));error.status=r.status;throw error;}
   return data;
 }
 async function probeSupabase(){
   if(!SB_URL||!SB_KEY) return false;
   sbLive=true;
-  try{ await sbFetch('/rest/v1/works?select=id&limit=1'); return true; }catch(e){ sbLive=false; return false; }
+  try{ await sbFetch('/rest/v1/works?select=id&limit=1',{headers:sbHeaders({'Authorization':'Bearer '+SB_KEY})}); return true; }catch(e){ sbLive=false; return false; }
 }
 /* Маппинг строк Supabase -> внутренняя модель */
 function mapProfile(r){return {id:r.id,username:r.username,displayName:r.display_name||r.username,bio:r.bio||'',motto:r.motto||'',location:r.location||'',hue:r.avatar_hue??38,role:r.role||'author',founder:!!r.is_founder,joinedAt:(r.created_at||'').slice(0,10),badges:r.badges||[],customization:(()=>{try{return cleanCustomization(r.customization||{})}catch(_){return cleanCustomization()}})()}}
@@ -124,16 +131,19 @@ function adoptFounderIdentity(state, real){
 const Store={
   mode:'local', // 'supabase' | 'local'
   state:null, session:null,
-  uid, today, cleanCustomization,
+  uid, today,
+  cleanCustomization(c){return cleanCustomization(c,this.mode==='local');},
 
   async init(){
     this.state=loadLocal();
     try{this.session=JSON.parse(localStorage.getItem(LS_SESSION)||'null')}catch(e){this.session=null}
     if(this.session&&this.session.token) sbToken=this.session.token;
+    if(this.session?.refreshToken&&(this.session.expiresAt||tokenExpiry(this.session.token))&&(this.session.expiresAt||tokenExpiry(this.session.token))<Date.now()+60000){sbLive=!!SB_URL;try{await this.refreshSession();}catch(e){if(e.status===400||e.status===401)this.setSession(null);}sbLive=false;}
     const ok=await probeSupabase();
     if(ok){
       this.mode='supabase';
       if(this.session&&!this.session.token)this.setSession(null);
+      await this.completeSocialReturn();
       try{ await this.pullFromSupabase(); }catch(e){ console.warn('Supabase pull failed, using cache',e); }
     }
     return this;
@@ -184,8 +194,15 @@ const Store={
 
   /* ---------- Сессия / аккаунты ---------- */
   currentUser(){ if(!this.session||(this.mode==='supabase'&&!this.session.token)) return null; return this.state.authors.find(a=>a.id===this.session.authorId)||null; },
-  setSession(s){ this.session=s; if(s){localStorage.setItem(LS_SESSION,JSON.stringify(s)); sbToken=s.token||null;} else {localStorage.removeItem(LS_SESSION); sbToken=null;} },
+  setSession(s){ if(s?.token&&!s.expiresAt)s={...s,expiresAt:tokenExpiry(s.token)};this.session=s; if(s){localStorage.setItem(LS_SESSION,JSON.stringify(s)); sbToken=s.token||null;} else {localStorage.removeItem(LS_SESSION); sbToken=null;} },
 
+  async refreshSession(){
+    const original=this.session;if(!original?.refreshToken)return;
+    const data=await sbFetch('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:JSON.stringify({refresh_token:original.refreshToken})});
+    if(this.session!==original)throw new Error('Аккаунт изменился во время продления сессии.');
+    if(!data?.access_token||!data.user||data.user.id!==original.authorId){const e=new Error('Не удалось продлить сессию своего аккаунта.');e.status=401;throw e;}
+    this.setSession({...original,token:data.access_token,refreshToken:data.refresh_token||original.refreshToken,expiresAt:tokenExpiry(data.access_token)||Date.now()+(data.expires_in||3600)*1000});
+  },
   async signup({username,displayName,email,password}){
     username=(username||'').trim().toLowerCase().replace(/[^a-z0-9_]/g,'');
     if(username.length<3||username.length>30) throw new Error('Логин: от 3 до 30 символов, только латиница, цифры и подчёркивание.');
@@ -194,10 +211,10 @@ const Store={
     if((password||'').length<6) throw new Error('Пароль: минимум 6 символов.');
     if(this.mode==='supabase'){
       const data=await sbFetch('/auth/v1/signup',{method:'POST',body:JSON.stringify({email,password,data:{username,display_name:displayName||username}})});
-      let authId=data.user&&data.user.id, token=data.access_token||null;
+      let authId=data.user&&data.user.id,token=data.access_token||null,refreshToken=data.refresh_token||null;
       if(!authId) throw new Error('Не удалось создать аккаунт. Попробуйте другой email.');
-      if(!token){ // почта подтверждается триггером в базе — просто входим
-        try{ const li=await sbFetch('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email,password})}); token=li.access_token; authId=li.user.id; }
+      if(!token){ // При включённом Confirm email вход станет доступен после письма
+        try{ const li=await sbFetch('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email,password})}); token=li.access_token;authId=li.user.id;refreshToken=li.refresh_token||null; }
         catch(e){ throw new Error('Аккаунт создан. Если вход не удался, подтвердите email по письму и войдите.'); }
       }
       sbToken=token;
@@ -210,7 +227,7 @@ const Store={
       }
       adoptFounderIdentity(this.state, author);
       if(!this.state.authors.some(a=>a.id===author.id)) this.state.authors.push(author);
-      this.save(); this.setSession({authorId:authId,token,email});
+      this.save(); this.setSession({authorId:authId,token,refreshToken,email});
       return author;
     }
     const author={id:uid('author'),username,displayName:displayName||username,bio:'',motto:'',location:'',hue:Math.floor(Math.random()*360),role:'author',joinedAt:today(),badges:['Новый автор']};
@@ -229,7 +246,7 @@ const Store={
         catch(e){throw new Error('Вход по юзернейму не выполнен. Проверьте данные; если функция username-login ещё не подключена, войдите по email.');}
       }
       if(!data.access_token||!data.user)throw new Error('Не удалось войти.');
-      this.setSession({authorId:data.user.id,token:data.access_token,email:data.user.email||login});
+      this.setSession({authorId:data.user.id,token:data.access_token,refreshToken:data.refresh_token,email:data.user.email||login});
       sbToken=data.access_token;
       await this.pullFromSupabase();
       let me=this.state.authors.find(a=>a.id===data.user.id);
@@ -240,7 +257,7 @@ const Store={
         this.state.authors.push(me); this.save();
       }
       adoptFounderIdentity(this.state, me); this.save();
-      this.setSession({authorId:me.id,token:data.access_token,email:data.user.email||login});
+      this.setSession({authorId:me.id,token:data.access_token,refreshToken:data.refresh_token,email:data.user.email||login});
       return me;
     }
     // локальный вход: логин или email + пароль (демо-аккаунты: username / demo1234)
@@ -251,12 +268,74 @@ const Store={
     return this.currentUser();
   },
   logout(){ this.setSession(null); },
+  async uploadProfileImage(blob,slot){
+    const me=this.currentUser();if(!me)throw new Error('Войдите в аккаунт.');
+    if(!['avatarUrl','bannerUrl'].includes(slot)||!blob||!['image/png','image/jpeg','image/webp'].includes(blob.type)||!blob.size||blob.size>1024*1024)throw new Error('Недопустимое изображение.');
+    if(this.mode==='local')return await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('Не удалось прочитать файл.'));r.readAsDataURL(blob);});
+    const ext={'image/png':'png','image/jpeg':'jpg','image/webp':'webp'}[blob.type],path=me.id+'/'+slot+'-'+uid()+'.'+ext;
+    try{await sbFetch('/storage/v1/object/profile-media/'+path,{method:'POST',headers:sbHeaders({'Content-Type':blob.type,'x-upsert':'false'}),body:blob});}
+    catch(e){throw new Error('Файл не загружен. Проверьте bucket profile-media и политики Storage из обновлённого SQL. '+e.message);}
+    return SB_URL+'/storage/v1/object/public/profile-media/'+path;
+  },
+  async removeProfileImage(url){
+    const me=this.currentUser(),prefix=SB_URL+'/storage/v1/object/public/profile-media/';
+    if(this.mode!=='supabase'||!me||!url?.startsWith(prefix))return;
+    const path=url.slice(prefix.length);if(!path.startsWith(me.id+'/')||path.includes('..')||path.includes('?')||path.includes('#'))return;
+    await sbFetch('/storage/v1/object/profile-media',{method:'DELETE',body:JSON.stringify({prefixes:[path]})});
+  },
+  async socialIdentities(){
+    if(this.mode!=='supabase')return [];
+    if(!this.currentUser())throw new Error('Войдите в аккаунт.');
+    const user=await sbFetch('/auth/v1/user');
+    if(user.id!==this.currentUser().id)throw new Error('Сессия принадлежит другому аккаунту.');
+    return user.identities||[];
+  },
+  async beginSocialLink(network){
+    if(this.mode!=='supabase')throw new Error('Настоящее подключение доступно только с общей базой Supabase. Локально можно сохранить публичную ссылку.');
+    const me=this.currentUser(),n=InkProfileTools.networks.find(n=>n.id===network);
+    if(!me||!n?.provider)throw new Error('Эта сеть доступна только как публичная ссылка, не как OAuth-подключение.');
+    const user=await sbFetch('/auth/v1/user');if(user.id!==me.id)throw new Error('Войдите в свой аккаунт заново.');
+    if(!user.email_confirmed_at)throw new Error('Сначала подтвердите email аккаунта.');
+    const nonce=uid(),redirect=new URL(location.pathname,location.origin);redirect.searchParams.set('ink_social',nonce);
+    const pending={nonce,authorId:me.id,network,provider:n.provider,expires:Date.now()+15*60*1000};
+    sessionStorage.setItem('chernila_social_pending',JSON.stringify(pending));
+    try{const data=await sbFetch('/auth/v1/user/identities/authorize?provider='+encodeURIComponent(n.provider)+'&redirect_to='+encodeURIComponent(redirect.href));
+      const target=new URL(data.url);if(target.protocol!=='https:')throw new Error('Некорректный адрес авторизации.');location.assign(target.href);
+    }catch(e){sessionStorage.removeItem('chernila_social_pending');throw new Error('OAuth не запущен. Включите провайдер и Manual Linking в Supabase. '+e.message);}
+  },
+  async unlinkSocial(identityId){
+    const identities=await this.socialIdentities();if(identities.length<2)throw new Error('Нельзя отключить последний способ входа.');
+    const identity=identities.find(x=>(x.identity_id||x.id)===identityId);if(!identity||identity.provider==='email')throw new Error('Нельзя отключить эту идентификацию.');
+    await sbFetch('/auth/v1/user/identities/'+encodeURIComponent(identityId),{method:'DELETE'});
+  },
+  async completeSocialReturn(){
+    if(typeof location.href!=='string')return;
+    const url=new URL(location.href),hash=new URLSearchParams(url.hash.slice(1));
+    if(!url.searchParams.has('ink_social')&&!hash.has('access_token')&&!hash.has('error'))return;
+    let pending=null;try{pending=JSON.parse(sessionStorage.getItem('chernila_social_pending')||'null');}catch(_){}
+    // Remove credentials from the browser address immediately, before requests or rendering.
+    const nonce=url.searchParams.get('ink_social'),providerError=url.searchParams.has('error')||hash.has('error');for(const key of ['ink_social','error','error_code','error_description','access_token','refresh_token','id_token','code'])url.searchParams.delete(key);
+    const socialReturn=!!nonce||!!pending;history.replaceState(null,'',url.pathname+url.search+(socialReturn?'#/profile':'#/login'));
+    if(!socialReturn)return; // A regular email-confirmation return is not a social-link failure.
+    try{
+      if(!pending||pending.nonce!==nonce||!Number.isFinite(pending.expires)||pending.expires<Date.now()||pending.authorId!==this.session?.authorId)throw new Error('Подключение не подтверждено: начните его заново из своего профиля.');
+      if(providerError)throw new Error('Соцсеть отказала в доступе или подключение отменено.');
+      const token=hash.get('access_token')||this.session?.token;if(!token)throw new Error('Не получена сессия авторизации.');
+      const user=await sbFetch('/auth/v1/user',{headers:sbHeaders({'Authorization':'Bearer '+token})});
+      if(user.id!==pending.authorId)throw new Error('Соцаккаунт принадлежит другому пользователю. Аккаунты не объединены.');
+      if(!(user.identities||[]).some(i=>i.provider===pending.provider))throw new Error('Сеть не подтвердила подключение.');
+      this.setSession({...this.session,token,refreshToken:hash.get('refresh_token')||this.session.refreshToken,expiresAt:Number(hash.get('expires_at'))*1000||tokenExpiry(token)});
+      sessionStorage.setItem('chernila_social_result',JSON.stringify({ok:true,network:pending.network,message:'Соцаккаунт подключён и подтверждён провайдером.'}));
+    }catch(e){sessionStorage.setItem('chernila_social_result',JSON.stringify({ok:false,message:e.message}));}
+    finally{sessionStorage.removeItem('chernila_social_pending');}
+  },
   async updateProfile(patch){
     const me=this.currentUser();if(!me)throw new Error('Войдите в аккаунт.');
-    const next={displayName:String(patch.displayName??me.displayName).trim(),bio:String(patch.bio??me.bio??'').trim(),motto:String(patch.motto??me.motto??'').trim(),location:String(patch.location??me.location??'').trim(),hue:Math.min(360,Math.max(0,Number(patch.hue??me.hue)||0)),customization:cleanCustomization(patch.customization??me.customization??{})};
+    const next={displayName:String(patch.displayName??me.displayName).trim(),bio:String(patch.bio??me.bio??'').trim(),motto:String(patch.motto??me.motto??'').trim(),location:String(patch.location??me.location??'').trim(),hue:Math.min(360,Math.max(0,Number(patch.hue??me.hue)||0)),customization:cleanCustomization(patch.customization??me.customization??{},this.mode==='local')};
     if(!next.displayName||next.displayName.length>80||next.bio.length>1200||next.motto.length>160||next.location.length>80)throw new Error('Проверьте имя и длину полей профиля.');
     if(this.mode==='supabase')await sbFetch('/rest/v1/profiles?id=eq.'+me.id,{method:'PATCH',body:JSON.stringify({display_name:next.displayName,bio:next.bio,motto:next.motto,location:next.location,avatar_hue:next.hue,customization:next.customization})});
-    Object.assign(me,next);this.save();return me;
+    if(this.mode==='local'){const state={...this.state,authors:this.state.authors.map(a=>a.id===me.id?{...a,...next}:a)};if(!saveLocal(state))throw new Error('Недостаточно места в браузере. Уменьшите изображения или удалите ненужные локальные данные.');}
+    Object.assign(me,next);if(this.mode!=='local')this.save();return me;
   },
   async setFeatured(id,featured){
     if(this.currentUser()?.role!=='admin')throw new Error('Только администратор.');

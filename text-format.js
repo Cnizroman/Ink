@@ -6,7 +6,9 @@ function inline(s){
   return esc(s).replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>')
     .replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>')
     .replace(/__([^_\n]+)__/g,'<u>$1</u>').replace(/~~([^~\n]+)~~/g,'<del>$1</del>')
-    .replace(/==([^=\n]+)==/g,'<mark>$1</mark>');
+    .replace(/==([^=\n]+)==/g,'<mark>$1</mark>')
+    .replace(/\{color:(#[0-9a-f]{6})\}([\s\S]*?)\{\/color\}/gi,'<span style="color:$1">$2</span>')
+    .replace(/\{mark:(#[0-9a-f]{6})\}([\s\S]*?)\{\/mark\}/gi,'<mark style="background-color:$1;color:#181818">$2</mark>');
 }
 function render(text,poetry=false,depth=0){
   if(depth>5) return esc(text);
@@ -24,7 +26,7 @@ function render(text,poetry=false,depth=0){
       continue;
     }
     if(line.trim()==='---'){out.push('<hr>');i++;continue;}
-    if(/^#{1,3} /.test(line)){out.push(`<h3>${inline(line.replace(/^#{1,3} /,''))}</h3>`);i++;continue;}
+    if(/^#{1,3} /.test(line)){const level=line.match(/^#+/)[0].length+1;out.push(`<h${level}>${inline(line.replace(/^#{1,3} /,''))}</h${level}>`);i++;continue;}
     if(line.startsWith('> ')){const q=[];while(i<lines.length&&lines[i].startsWith('> '))q.push(lines[i++].slice(2));out.push(`<blockquote>${inline(q.join('\n')).replace(/\n/g,'<br>')}</blockquote>`);continue;}
     if(/^(- |\d+\. )/.test(line)){
       const ordered=/^\d/.test(line),items=[];const re=ordered?/^\d+\. /:/^- /;
