@@ -261,9 +261,30 @@ test('social linking checks enabled Auth providers before redirect and supports 
  let enabled=false,authorization='',redirect='';const remote=async(url)=>{const p=new URL(url).pathname;let body=[];
  if(p==='/auth/v1/settings')body={external:{x:enabled,github:false,email:true}};
  if(p==='/auth/v1/user')body={id:'writer',email_confirmed_at:'2026-01-01',identities:[{provider:'email'}]};
- if(p==='/auth/v1/user/identities/authorize'){authorization=url;body={url:'https://x.com/oauth/authorize'};}
+ if(p==='/auth/v1/user/identities/authorize'){assert.equal(new URL(url).searchParams.get('skip_http_redirect'),'true');authorization=url;body={url:'https://x.com/oauth/authorize'};}
  return {ok:true,text:async()=>JSON.stringify(body)};};
  const {store,ctx,ephemeral}=harness({remote});await store.init();store.state.authors.push({id:'writer',username:'writer'});store.setSession({authorId:'writer',token:'session'});ctx.location={origin:'https://site.test',pathname:'/Ink/',assign:url=>redirect=url};
  await assert.rejects(store.beginSocialLink('twitter'),/не настроена/);assert.equal(authorization,'');assert.equal(ephemeral.get('chernila_social_pending'),undefined);
  enabled=true;await store.beginSocialLink('twitter');assert.match(authorization,/provider=x&/);assert.equal(redirect,'https://x.com/oauth/authorize');assert.equal(JSON.parse(ephemeral.get('chernila_social_pending')).provider,'x');
+});
+
+
+test('OAuth launch errors distinguish transport, response format, and actual disabled configuration',async()=>{
+ for(const fault of ['network','format','url','http','credentials','manual','provider','session']){
+  const remote=async(url,opts={})=>{const path=new URL(url).pathname;let body=[];
+   if(path==='/auth/v1/settings')body={external:{github:true}};
+   if(path==='/auth/v1/user')body={id:'writer',email_confirmed_at:'2026-01-01'};
+   if(path==='/auth/v1/user/identities/authorize'){
+    assert.equal(opts.redirect,'error');assert.equal(new URL(url).searchParams.get('skip_http_redirect'),'true');
+    if(fault==='network')throw new TypeError('Failed to fetch');
+    if(fault==='format')return {ok:true,text:async()=>'<html>not JSON</html>'};
+    if(['url','http','credentials'].includes(fault))return {ok:true,text:async()=>JSON.stringify({url:{url:'not a URL',http:'http://provider.test',credentials:'https://user:secret@provider.test'}[fault]})};
+    const error_code={manual:'manual_linking_disabled',provider:'provider_disabled',session:'bad_jwt'}[fault];return {ok:false,status:fault==='session'?401:400,text:async()=>JSON.stringify({error_code,msg:'upstream failure'})};
+   }
+   return {ok:true,text:async()=>JSON.stringify(body)};
+  };
+  const {store,ctx,ephemeral}=harness({remote});await store.init();store.state.authors.push({id:'writer',username:'writer'});store.setSession({authorId:'writer',token:'original'});ctx.location={origin:'https://site.test',pathname:'/Ink/',assign:()=>assert.fail('Failed OAuth must not navigate')};
+  await assert.rejects(store.beginSocialLink('github'),error=>{if(fault==='network')assert.match(error.message,/Браузер не получил/);if(fault==='format')assert.match(error.message,/не вернул ссылку/);if(fault==='url')assert.match(error.message,/некорректную ссылку/);if(['http','credentials'].includes(fault)){assert.match(error.message,/небезопасную ссылку/);assert.ok(!error.message.includes('secret'));}if(['network','format'].includes(fault))assert.ok(!error.message.includes('Включите провайдер'));if(fault==='manual')assert.match(error.message,/Allow manual linking/);if(fault==='provider')assert.match(error.message,/провайдер отключён/);if(fault==='session')assert.match(error.message,/Сессия истекла/);return true;});
+  assert.equal(store.session.token,'original');assert.equal(ephemeral.get('chernila_social_pending'),undefined);
+ }
 });

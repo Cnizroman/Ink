@@ -14,7 +14,7 @@ const {chromium:pw}=require('playwright-core'),cp=require('@sparticuz/chromium')
   if(u.hostname==='github.com')return route.fulfill({contentType:'text/html',body:'<h1>OAuth provider fixture — no real network request</h1>'});
   if(!u.hostname.endsWith('.supabase.co'))return route.abort();if(method==='OPTIONS')return route.fulfill({status:204,headers:cors});
   if(u.pathname==='/auth/v1/settings')return json({external:{github:providerEnabled}});
-  if(u.pathname==='/auth/v1/user/identities/authorize'){redirect=u.searchParams.get('redirect_to');return json({url:'https://github.com/login/oauth/authorize?client_id=test-fixture'});}
+  if(u.pathname==='/auth/v1/user/identities/authorize'){assert.equal(u.searchParams.get('skip_http_redirect'),'true');redirect=u.searchParams.get('redirect_to');return json({url:'https://github.com/login/oauth/authorize?client_id=test-fixture'});}
   if(u.pathname==='/auth/v1/user'){identityReads++;return json({id:owner,email_confirmed_at:'2026-01-01T00:00:00Z',identities:[{identity_id:'email-id',provider:'email'},...(linked?[{identity_id:'github-id',provider:'github',identity_data:{user_name:'actual_owner'}}]:[])]});}
   if(u.pathname==='/auth/v1/user/identities/github-id'&&method==='DELETE'){linked=false;return json({});}
   if(u.pathname==='/rest/v1/profiles'){if(method==='PATCH'){if(failProfile)return json({message:'profile write denied'},403);profile={...profile,...req.postDataJSON()};}return json([profile]);}

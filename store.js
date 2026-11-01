@@ -86,7 +86,7 @@ async function sbFetch(path,opts){
   const headers=Object.assign(sbHeaders(),path.startsWith('/rest/v1/')?{'Prefer':'return=representation'}:{},opts?.headers||{});
   const r=await fetch(SB_URL+path,{...opts,headers});
   const txt=await r.text(); let data=null; try{data=txt?JSON.parse(txt):null}catch(e){}
-  if(!r.ok){const error=new Error((data&&(data.message||data.msg||data.error_description))||('Supabase '+r.status));error.status=r.status;throw error;}
+  if(!r.ok){const error=new Error((data&&(data.message||data.msg||data.error_description))||('Supabase '+r.status));error.status=r.status;error.code=data?.error_code||data?.code||null;throw error;}
   return data;
 }
 async function probeSupabase(){
@@ -308,9 +308,24 @@ const Store={
     const nonce=uid(),redirect=new URL(location.pathname,location.origin);redirect.searchParams.set('ink_social',nonce);
     const pending={nonce,authorId:me.id,network,provider,expires:Date.now()+15*60*1000};
     sessionStorage.setItem('chernila_social_pending',JSON.stringify(pending));
-    try{const data=await sbFetch('/auth/v1/user/identities/authorize?provider='+encodeURIComponent(provider)+'&redirect_to='+encodeURIComponent(redirect.href));
-      const target=new URL(data.url);if(target.protocol!=='https:')throw new Error('Некорректный адрес авторизации.');location.assign(target.href);
-    }catch(e){sessionStorage.removeItem('chernila_social_pending');throw new Error('OAuth не запущен. Включите провайдер и Manual Linking в Supabase. '+e.message);}
+    try{
+      // Like auth-js linkIdentity: fetch JSON first, navigate only after a validated URL.
+      const query=new URLSearchParams({provider,redirect_to:redirect.href,skip_http_redirect:'true'});
+      const data=await sbFetch('/auth/v1/user/identities/authorize?'+query,{redirect:'error'});
+      if(typeof data?.url!=='string'||!data.url)throw new Error('Сервис OAuth не вернул ссылку авторизации. Обновите страницу и повторите.');
+      let target;try{target=new URL(data.url);}catch(_){throw new Error('Сервис OAuth вернул некорректную ссылку авторизации.');}
+      if(target.protocol!=='https:'||target.username||target.password)throw new Error('Сервис OAuth вернул небезопасную ссылку авторизации.');
+      if(this.session?.authorId!==me.id)throw new Error('Аккаунт изменился. Откройте профиль заново.');
+      location.assign(target.href);
+    }catch(e){
+      sessionStorage.removeItem('chernila_social_pending');
+      if(e.code==='manual_linking_disabled')throw new Error('Supabase запретил привязку: включите Allow manual linking.');
+      if(e.code==='provider_disabled')throw new Error(n.label+': провайдер отключён в Supabase.');
+      if(e.status===401)throw new Error('Сессия истекла. Войдите заново и повторите подключение.');
+      if(e.status){const code=typeof e.code==='string'&&/^[a-z_]{1,60}$/i.test(e.code)?', '+e.code:'';throw new Error('Не удалось запустить авторизацию '+n.label+' (HTTP '+e.status+code+'). Повторите позже.');}
+      if(e.name==='TypeError')throw new Error('Браузер не получил ответ сервиса OAuth. Обновите страницу и повторите подключение.');
+      throw e;
+    }
   },
   async unlinkSocial(identityId){
     const identities=await this.socialIdentities();if(identities.length<2)throw new Error('Нельзя отключить последний способ входа.');
