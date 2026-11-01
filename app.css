@@ -185,3 +185,28 @@ footer.site nav{display:flex;flex-direction:column;gap:9px;font-size:.93rem} foo
 @media(max-width:560px){.foot-grid,.grid.two{grid-template-columns:1fr}.hero{padding-top:46px}.userchip .uname{display:none}}
 .burger{display:none;background:var(--panel);border:1px solid var(--line2);color:var(--text);border-radius:10px;width:40px;height:40px;place-items:center;font-size:1.1rem}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.001s!important;transition-duration:.001s!important}html{scroll-behavior:auto}}
+
+/* Циклы: существующие произведения и явный порядок чтения. */
+.group-page{padding-top:40px;padding-bottom:60px;max-width:960px}
+.group-page>.kicker{margin-top:28px}
+.group-card h3{font-size:1.5rem;margin:14px 0 10px}
+.group-card .more{display:inline-block;margin-top:14px}
+.group-link{display:block;color:var(--gold2);margin-top:10px}
+.group-navigation{margin-top:24px}
+.group-navigation h2{margin:10px 0}
+.group-members{border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
+.group-members legend{color:var(--gold2);padding:0 8px}
+.group-member{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid var(--line)}
+.group-member>label:first-child{display:flex;gap:10px;align-items:center;flex:1;min-width:0;overflow-wrap:anywhere}
+.group-member input[type=checkbox]{accent-color:var(--gold);width:18px;height:18px;flex-shrink:0}
+.group-member .field{width:92px;flex-shrink:0}
+@media(max-width:560px){.group-member{gap:10px}.group-member .field{width:76px}.group-page h1{font-size:2rem}}
+@media(max-width:560px){
+  .topbar-in{flex-wrap:wrap;gap:10px}
+  .topbar-in .burger{flex-shrink:0}
+  .topbar-in .logo{margin-right:auto;font-size:1.2rem;gap:6px}
+  .top-search{order:4;flex-basis:100%;margin-left:0}
+  .userchip{margin-left:auto;gap:6px;flex-wrap:wrap}
+  .userchip .btn{padding:7px 10px;font-size:.78rem}
+  .userchip>a[href="#/studio/new"]{display:none}
+}

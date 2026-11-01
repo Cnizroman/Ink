@@ -24,9 +24,42 @@ function seedState(){
   ];
   return s;
 }
+/* Миграция старого демо-каталога без сброса реальных аккаунтов и работ.
+   Удаляем только явно помеченные демо-записи и встроенные демо-аккаунты. */
+function migrateLocal(d){
+  if(d.catalogVersion===3) return d;
+  const fakeAuthors=new Set((d.authors||[]).filter(a=>a.id!=='cnizroman' &&
+    (a.demo===true||a.isDemo===true||(d.users||[]).some(u=>u.authorId===a.id &&
+      u.email===a.username+'@chernila.local' && u.pass===hash('demo1234')))).map(a=>a.id));
+  const fakeWorks=new Set(d.works.filter(w=>fakeAuthors.has(w.authorId)||w.demo===true||w.isDemo===true).map(w=>w.id));
+  d.authors=(d.authors||[]).filter(a=>!fakeAuthors.has(a.id));
+  d.users=(d.users||[]).filter(u=>!fakeAuthors.has(u.authorId));
+  d.works=d.works.filter(w=>!fakeWorks.has(w.id));
+  const oldViews={'ne-s-nachala':12480,'doroga-iz-holoda':18930,'spasatelny-krug':14120,'gde-nas-net':16740,'sem-dney':15210,'belaya-golova':9870};
+  d.works.forEach(w=>{if(oldViews[w.id]) w.views=Math.max(0,(w.views||0)-oldViews[w.id]);});
+  const teasers=new Set(['c-intro-1','c-b1-1','c-b2-1','c-b3-1','c-b4-1','c-bg-1']);
+  d.chapters=(d.chapters||[]).filter(c=>!fakeWorks.has(c.workId)&&!teasers.has(c.id));
+  for(const key of ['reviews','comments','likes','shelves','contestEntries'])
+    d[key]=(d[key]||[]).filter(r=>!fakeWorks.has(r.workId)&&!fakeAuthors.has(r.userId));
+  d.follows=(d.follows||[]).filter(f=>!fakeAuthors.has(f.authorId)&&!fakeAuthors.has(f.followerId));
+  d.groups=(d.groups||[]).filter(g=>!fakeAuthors.has(g.authorId));
+  d.catalogVersion=3;
+  return d;
+}
+function ensureGroups(state){
+  if(!Array.isArray(state.groups)) state.groups=[];
+  const founder=state.authors.find(a=>a.username==='cnizroman');
+  if(founder) state.groups.forEach(g=>{if(g.authorId==='cnizroman') g.authorId=founder.id;});
+  // После удаления автором не восстанавливаем цикл при каждом открытии.
+  if(!state.groupsInitialized){
+    for(const g of window.CHERNILA_SEED.groups||[])
+      if(!state.groups.some(x=>x.id===g.id)) state.groups.push({...clone(g),authorId:founder?.id||g.authorId});
+    state.groupsInitialized=true;
+  }
+}
 function loadLocal(){
-  try{const raw=localStorage.getItem(LS_DB); if(raw){const d=JSON.parse(raw); if(d&&d.works) return d;}}catch(e){}
-  const s=seedState(); saveLocal(s); return s;
+  try{const raw=localStorage.getItem(LS_DB); if(raw){const d=JSON.parse(raw); if(d&&Array.isArray(d.works)){migrateLocal(d); injectFounder(d); ensureGroups(d); saveLocal(d); return d;}}}catch(e){}
+  const s=seedState(); s.catalogVersion=3; ensureGroups(s); saveLocal(s); return s;
 }
 function saveLocal(state){ try{localStorage.setItem(LS_DB,JSON.stringify(state))}catch(e){} }
 
@@ -74,6 +107,7 @@ function adoptFounderIdentity(state, real){
   if(!real||real.username!=='cnizroman'||real.id==='cnizroman') return;
   if(!state.authors.some(a=>a.id==='cnizroman')) return;
   state.works.forEach(w=>{ if(w.authorId==='cnizroman') w.authorId=real.id; });
+  (state.groups||[]).forEach(g=>{ if(g.authorId==='cnizroman') g.authorId=real.id; });
   state.follows.forEach(f=>{ if(f.authorId==='cnizroman') f.authorId=real.id; if(f.followerId==='cnizroman') f.followerId=real.id; });
   state.likes.forEach(l=>{ if(l.userId==='cnizroman') l.userId=real.id; });
   state.shelves.forEach(s=>{ if(s.userId==='cnizroman') s.userId=real.id; });
@@ -97,7 +131,7 @@ const Store={
     return this;
   },
   async pullFromSupabase(){
-    const [profiles,works,chapters,comments,reviews,likes,follows,shelves,contests,entries]=await Promise.all([
+    const [profiles,works,chapters,comments,reviews,likes,follows,shelves,contests,entries,groups]=await Promise.all([
       sbFetch('/rest/v1/profiles?select=*&order=created_at.asc').catch(()=>[]),
       sbFetch('/rest/v1/works?select=*&order=updated_at.desc').catch(()=>[]),
       sbFetch('/rest/v1/chapters?select=*&order=sort_order.asc').catch(()=>[]),
@@ -107,7 +141,8 @@ const Store={
       sbFetch('/rest/v1/follows?select=*').catch(()=>[]),
       this.session?sbFetch('/rest/v1/shelves?select=*').catch(()=>[]):Promise.resolve([]),
       sbFetch('/rest/v1/contests?select=*&order=deadline.asc').catch(()=>[]),
-      sbFetch('/rest/v1/contest_entries?select=*').catch(()=>[])
+      sbFetch('/rest/v1/contest_entries?select=*').catch(()=>[]),
+      sbFetch('/rest/v1/work_groups?select=*&order=created_at.asc').catch(()=>null)
     ]);
     { // Supabase — источник правды (даже если база пока пустая)
       this.state.authors=profiles.map(mapProfile);
@@ -121,6 +156,15 @@ const Store={
       if(contests.length) this.state.contests=contests.map(r=>({id:r.id,title:r.title,theme:r.theme,description:r.description||'',prize:r.prize||'',deadline:r.deadline,status:r.status}));
       this.state.contestEntries=entries.map(r=>({id:r.id,contestId:r.contest_id,workId:r.work_id,userId:r.user_id,createdAt:(r.created_at||'').slice(0,10)}));
       injectFounder(this.state);
+      // null означает недоступную таблицу, а [] — действительно пустой список.
+      if(groups!==null){
+        this.state.groups=groups.filter(r=>!r.deleted).map(r=>({id:r.id,authorId:r.author_id,title:r.title,kind:r.kind,description:r.description||'',workIds:r.work_ids||[]}));
+        const founder=this.state.authors.find(a=>a.username==='cnizroman');
+        // Встроенный цикл показывается, пока автор не сохранил свою версию.
+        for(const g of window.CHERNILA_SEED.groups||[])
+          if(!groups.some(x=>x.id===g.id)) this.state.groups.push({...clone(g),authorId:founder.id});
+      }
+      ensureGroups(this.state);
       saveLocal(this.state);
     }
   },
@@ -208,6 +252,7 @@ const Store={
     return w;
   },
   deleteWork(id){
+    this.state.groups.forEach(g=>{g.workIds=g.workIds.filter(wid=>wid!==id);});
     this.state.works=this.state.works.filter(w=>w.id!==id);
     this.state.chapters=this.state.chapters.filter(c=>c.workId!==id);
     this.save(); this.push(sbFetch('/rest/v1/works?id=eq.'+id,{method:'DELETE'}));
@@ -224,6 +269,32 @@ const Store={
   },
   deleteChapter(id){ this.state.chapters=this.state.chapters.filter(c=>c.id!==id); this.save(); this.push(sbFetch('/rest/v1/chapters?id=eq.'+id,{method:'DELETE'})); },
   addView(workId){ const w=this.state.works.find(x=>x.id===workId); if(w){w.views=(w.views||0)+1; this.save(); this.push(sbFetch('/rest/v1/rpc/increment_work_views',{method:'POST',body:JSON.stringify({p_work_id:workId})}));} },
+
+  /* ---------- Циклы / группы (порядок хранится в workIds) ---------- */
+  async upsertGroup(g){
+    const user=this.currentUser(), ex=this.state.groups.find(x=>x.id===g.id);
+    if(!user || (ex && ex.authorId!==user.id)) throw new Error('Можно изменять только свои группы.');
+    const title=(g.title||'').trim(), ids=g.workIds||[];
+    if(!title || title.length>140) throw new Error('Название группы: от 1 до 140 символов.');
+    if(!['cycle','dilogy','trilogy','tetralogy','series'].includes(g.kind)) throw new Error('Выберите тип группы.');
+    if((g.description||'').length>2000) throw new Error('Описание: не более 2000 символов.');
+    if(!ids.length || ids.length>100 || new Set(ids).size!==ids.length) throw new Error('Выберите от 1 до 100 произведений без повторов.');
+    if(ids.some(id=>!this.state.works.some(w=>w.id===id&&w.authorId===user.id))) throw new Error('В группу можно добавить только свои существующие произведения.');
+    const group={id:ex?ex.id:uid(),authorId:user.id,title,kind:g.kind,description:(g.description||'').trim(),workIds:[...ids]};
+    if(this.mode==='supabase'){
+      const row={id:group.id,author_id:group.authorId,title,kind:group.kind,description:group.description,work_ids:group.workIds,deleted:false};
+      try{await sbFetch('/rest/v1/work_groups?on_conflict=id',{method:'POST',headers:sbHeaders({'Prefer':'resolution=merge-duplicates,return=representation'}),body:JSON.stringify(row)});}
+      catch(e){throw new Error('Группа не сохранена в общей базе. Выполните обновлённый supabase-platform-schema.sql. '+e.message);}
+    }
+    if(ex) Object.assign(ex,group); else this.state.groups.push(group);
+    this.save(); return group;
+  },
+  async deleteGroup(id){
+    const g=this.state.groups.find(x=>x.id===id), user=this.currentUser();
+    if(!g||!user||g.authorId!==user.id) throw new Error('Можно удалить только свою группу.');
+    if(this.mode==='supabase') await sbFetch('/rest/v1/work_groups?on_conflict=id',{method:'POST',headers:sbHeaders({'Prefer':'resolution=merge-duplicates,return=representation'}),body:JSON.stringify({id:g.id,author_id:g.authorId,title:g.title,kind:g.kind,description:g.description,work_ids:[],deleted:true})});
+    this.state.groups=this.state.groups.filter(x=>x.id!==id); this.save();
+  },
 
   /* ---------- Социальное ---------- */
   toggleLike(workId){ const me=this.currentUser(); if(!me) return false;

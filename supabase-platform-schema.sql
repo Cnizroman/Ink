@@ -323,3 +323,69 @@ create trigger on_auth_user_auto_confirm after insert on auth.users
 -- почты не потребуется, а книги первого автора уже встроены
 -- в платформу. Файл можно запускать повторно — он идемпотентен.
 -- ============================================================
+
+-- ---------- Циклы и группы произведений (обновление каталога v3) ----------
+-- text[] нужен и для UUID новых работ, и для slug встроенных книг.
+create table if not exists public.work_groups (
+  id text primary key check (length(id) between 1 and 100),
+  author_id uuid not null references public.profiles(id) on delete cascade,
+  title text not null check (length(trim(title)) between 1 and 140),
+  kind text not null default 'cycle' check (kind in ('cycle','dilogy','trilogy','tetralogy','series')),
+  description text not null default '' check (length(description) <= 2000),
+  work_ids text[] not null default '{}' check (cardinality(work_ids) <= 100),
+  -- Мягкое удаление не позволяет встроенному циклу появиться снова.
+  deleted boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists work_groups_author_idx on public.work_groups(author_id);
+alter table public.work_groups enable row level security;
+drop policy if exists work_groups_read on public.work_groups;
+create policy work_groups_read on public.work_groups for select to anon, authenticated using (true);
+drop policy if exists work_groups_insert on public.work_groups;
+create policy work_groups_insert on public.work_groups for insert to authenticated with check (author_id = auth.uid());
+drop policy if exists work_groups_update on public.work_groups;
+create policy work_groups_update on public.work_groups for update to authenticated
+  using (author_id = auth.uid()) with check (author_id = auth.uid());
+drop policy if exists work_groups_delete on public.work_groups;
+create policy work_groups_delete on public.work_groups for delete to authenticated using (author_id = auth.uid());
+grant select on public.work_groups to anon, authenticated;
+grant insert, update, delete on public.work_groups to authenticated;
+
+create or replace function public.validate_work_group() returns trigger
+language plpgsql set search_path = public as $$
+declare member_id text; founder boolean;
+begin
+  select exists(select 1 from public.profiles where id = new.author_id and username = 'cnizroman') into founder;
+  if new.id = 'nikto-ne-vspomnit' and not founder then
+    raise exception 'Встроенный цикл принадлежит основателю';
+  end if;
+  if cardinality(new.work_ids) <> (select count(distinct x) from unnest(new.work_ids) x) then
+    raise exception 'Повторяющиеся произведения в группе';
+  end if;
+  foreach member_id in array new.work_ids loop
+    if not exists(select 1 from public.works where id::text = member_id and author_id = new.author_id)
+      and not (founder and member_id = any(array['ne-s-nachala','doroga-iz-holoda','spasatelny-krug','gde-nas-net','sem-dney','belaya-golova'])) then
+      raise exception 'В группу можно добавить только свои существующие произведения';
+    end if;
+  end loop;
+  new.updated_at = now();
+  return new;
+end;
+$$;
+drop trigger if exists work_groups_validate on public.work_groups;
+create trigger work_groups_validate before insert or update on public.work_groups
+  for each row execute function public.validate_work_group();
+
+-- Удаление книги убирает ссылку из циклов, но не удаляет другие книги.
+create or replace function public.remove_deleted_work_from_groups() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  update public.work_groups set work_ids = array_remove(work_ids, old.id::text)
+    where old.id::text = any(work_ids);
+  return old;
+end;
+$$;
+drop trigger if exists works_group_cleanup on public.works;
+create trigger works_group_cleanup after delete on public.works
+  for each row execute function public.remove_deleted_work_from_groups();

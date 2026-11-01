@@ -1,0 +1,3 @@
+# Local tool caches and installed dependencies
+.cache/
+node_modules/

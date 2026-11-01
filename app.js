@@ -12,6 +12,7 @@ const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelect
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TYPE_LABEL={}; (window.CHERNILA_SEED?.types||[]).forEach(t=>TYPE_LABEL[t.id]=t.label);
 const STATUS_LABEL={completed:'Завершено',ongoing:'В процессе',frozen:'Заморожено'};
+const GROUP_KINDS={cycle:'Цикл',dilogy:'Дилогия',trilogy:'Трилогия',tetralogy:'Тетралогия',series:'Серия'};
 const SHELVES={want:'Хочу прочитать',reading:'Читаю',done:'Прочитано',fav:'Избранное'};
 const CRITERIA=[{id:'plot',label:'Сюжет',max:5},{id:'characters',label:'Персонажи',max:4},{id:'atmosphere',label:'Атмосфера',max:4},{id:'style',label:'Язык и стиль',max:4},{id:'emotion',label:'Эмоциональное воздействие',max:4}];
 const COVERS=[['#2b2113','#c8a96e'],['#0b2029','#73b9d4'],['#1d1030','#a67bc4'],['#06231d','#6fffd6'],['#1a0505','#a83232'],['#12301a','#79c26a'],['#2e0f22','#d87bab'],['#101d33','#5e84c4'],['#33200d','#e0a75e'],['#1c1c1c','#e8e2d4']];
@@ -55,14 +56,30 @@ const ava=(a,cls='')=>`<span class="avatar ${cls}" style="background:linear-grad
 function coverHTML(w){const a=author(w.authorId);return `<div class="cover" style="background:linear-gradient(150deg,${esc(w.cover?.from||'#222')},${esc(w.cover?.to||'#c8a96e')})">
   <span class="cov-type">${esc(TYPE_LABEL[w.type]||w.type)} · ${esc(w.genre)}</span><span class="cov-symbol">${esc(w.cover?.symbol||'✦')}</span>
   <span><span class="cov-title">${esc(w.title)}</span><span class="cov-author" style="display:block">${esc(a.displayName)}</span></span></div>`}
+const groupWorks=g=>(g.workIds||[]).map(work).filter(w=>w&&w.authorId===g.authorId);
+const groupsOf=wid=>(S.groups||[]).filter(g=>g.workIds.includes(wid)&&groupWorks(g).some(w=>w.id===wid));
+function groupCard(g){return `<article class="panel group-card"><span class="pill gold">${esc(GROUP_KINDS[g.kind]||'Цикл')}</span>
+  <h3><a href="#/group/${encodeURIComponent(g.id)}">${esc(g.title)}</a></h3><p class="muted">${esc(g.description)}</p>
+  <div class="small muted">${esc(author(g.authorId).displayName)} · Произведений: ${groupWorks(g).length}</div>
+  <a class="more" href="#/group/${encodeURIComponent(g.id)}">Порядок чтения →</a></article>`;}
+function pageGroup(id){
+  const g=S.groups.find(x=>x.id===id); if(!g) return page404(); setNav('catalog');
+  const ws=groupWorks(g);
+  $('#app').innerHTML=`<div class="wrap group-page"><a class="more" href="#/catalog">← Каталог</a>
+    <div class="kicker">${esc(GROUP_KINDS[g.kind])} · Произведений: ${ws.length}</div><h1>${esc(g.title)}</h1>
+    <p class="muted">${esc(g.description)}</p><p>Автор: <a class="more" href="#/author/${g.authorId}">${esc(author(g.authorId).displayName)}</a></p>
+    ${me()?.id===g.authorId?`<a class="btn ghost sm" href="#/studio/groups/${encodeURIComponent(g.id)}">Редактировать группу</a>`:''}
+    <section class="block"><h2>Порядок чтения</h2><div class="chapter-list">${ws.map((w,i)=>`<a class="chapter-row" href="#/work/${w.id}"><span class="num">${i+1}</span><span style="flex:1"><b>${esc(w.title)}</b><br><span class="small muted">${esc(w.subtitle||w.genre)}</span></span><span>Открыть →</span></a>`).join('')||'<p class="muted">В группе пока нет доступных произведений.</p>'}</div></section></div>`;
+}
 function workCard(w){const r=rating(w.id),a=author(w.authorId),prog=Store.progress.get()[w.id];
   return `<article class="work-card reveal"><a href="#/work/${w.id}" aria-label="${esc(w.title)}">${coverHTML(w)}</a>
   <div class="work-body"><div style="display:flex;gap:7px;flex-wrap:wrap"><span class="pill">${esc(TYPE_LABEL[w.type]||'')}</span><span class="pill">${esc(STATUS_LABEL[w.status]||w.status)}</span>${w.legacyUrl?'<span class="pill gold">Первый автор</span>':''}</div>
   <h3><a href="#/work/${w.id}">${esc(w.title)}</a></h3>
   <div class="small muted">✒ <a href="#/author/${a.id}">${esc(a.displayName)}</a> · ${esc(w.genre)} · ${esc(w.ageRating)}</div>
+  ${groupsOf(w.id).map(g=>`<a class="small group-link" href="#/group/${encodeURIComponent(g.id)}">${esc(GROUP_KINDS[g.kind])}: ${esc(g.title)}</a>`).join('')}
   <p>${esc(w.description)}</p>
   ${prog?`<div class="progress-line" title="Прочитано ${Math.round(prog.pct)}%"><i style="width:${prog.pct}%"></i></div>`:''}
-  <div class="work-meta"><span class="rate">${r?('★ '+r.outOf10.toFixed(1)+' · '+r.count+' рец.'):'☆ пока без рецензий'}</span><span>👁 ${fmt(w.views||0)}</span><span>♥ ${likesOf(w.id)}</span><span>${chaptersOf(w.id).length} гл.</span><span>~${readTime(w)} мин</span></div>
+  <div class="work-meta"><span class="rate">${r?('★ '+r.outOf10.toFixed(1)+' · '+r.count+' рец.'):'☆ пока без рецензий'}</span><span>👁 ${fmt(w.views||0)}</span><span>♥ ${likesOf(w.id)}</span>${w.legacyUrl?'<span>Полный текст ↗</span>':`<span>${chaptersOf(w.id).length} гл.</span><span>~${readTime(w)} мин</span>`}</div>
   </div></article>`}
 function authorCard(a){const ws=S.works.filter(w=>w.authorId===a.id);const likes=ws.reduce((s,w)=>s+likesOf(w.id),0);
   return `<article class="author-card reveal">${ava(a,'lg')}<div style="flex:1"><h3><a href="#/author/${a.id}">${esc(a.displayName)}</a></h3>
@@ -130,30 +147,34 @@ function pageHome(){
 
 function pageCatalog(params){
   setNav('catalog');
-  const q=(params.get('q')||'').toLowerCase(), genre=params.get('genre')||'', type=params.get('type')||'', status=params.get('status')||'', sort=params.get('sort')||'new';
+  const normalize=t=>t.toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/\s+/g,' ').trim();
+  const q=normalize(params.get('q')||''), scope=params.get('scope')||'title', genre=params.get('genre')||'', type=params.get('type')||'', status=params.get('status')||'', sort=params.get('sort')||'new';
   let list=S.works.filter(w=>{
     const a=author(w.authorId);
     return (!genre||w.genre===genre)&&(!type||w.type===type)&&(!status||w.status===status)&&
-      (!q||(w.title+' '+w.description+' '+a.displayName+' '+(w.tags||[]).join(' ')).toLowerCase().includes(q));
+      (!q||normalize(scope==='all'?w.title+' '+w.description+' '+a.displayName+' '+(w.tags||[]).join(' '):w.title).includes(q));
   });
   const by={new:(a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''),popular:(a,b)=>(b.views||0)-(a.views||0),rating:(a,b)=>((rating(b.id)?.outOf10||0)-(rating(a.id)?.outOf10||0)),likes:(a,b)=>likesOf(b.id)-likesOf(a.id),az:(a,b)=>a.title.localeCompare(b.title,'ru')};
   list.sort(by[sort]||by.new);
-  const chip=(k,v,l)=>`<a class="chipbtn ${(params.get(k)||'')===v?'on':''}" href="#/catalog?${new URLSearchParams({...Object.fromEntries(params),[k]:v}).toString().replace(/=(&|$)/g,'$1')}">${l}</a>`;
   const link=(patch)=>{const p=new URLSearchParams(params);Object.entries(patch).forEach(([k,v])=>v?p.set(k,v):p.delete(k));return '#/catalog?'+p.toString()};
   $('#app').innerHTML=`<div class="wrap"><div class="catalog-layout">
     <aside class="filters panel">
-      <form id="catSearch"><label class="field">Поиск<input class="input" name="q" value="${esc(params.get('q')||'')}" placeholder="Название, автор, тег…"></label></form>
+      <form id="catSearch" class="stack" role="search"><label class="field">Поиск по названию<input class="input" type="search" name="q" value="${esc(params.get('q')||'')}" placeholder="Введите название произведения"></label>
+      <label class="field">Где искать<select name="scope"><option value="title" ${scope!=='all'?'selected':''}>Только в названии</option><option value="all" ${scope==='all'?'selected':''}>Название, автор, теги, аннотация</option></select></label><button class="btn sm" type="submit">Найти</button></form>
       <div><h4>Тип произведения</h4><div class="chiprow"><a class="chipbtn ${!type?'on':''}" href="${link({type:''})}">Все</a>${window.CHERNILA_SEED.types.map(t=>`<a class="chipbtn ${type===t.id?'on':''}" href="${link({type:t.id})}">${t.label}</a>`).join('')}</div></div>
-      <div><h4>Жанр</h4><div class="chiprow"><a class="chipbtn ${!genre?'on':''}" href="${link({genre:''})}">Все</a>${window.CHERNILA_SEED.genres.map(g=>`<a class="chipbtn ${genre===g?'on':''}" href="${link({genre:g})}">${g}</a>`).join('')}</div></div>
+      <label class="field">Категория / жанр<select id="catGenre"><option value="">Все жанры</option>${[...new Set([...window.CHERNILA_SEED.genres,...S.works.map(w=>w.genre)])].map(g=>`<option value="${esc(g)}" ${genre===g?'selected':''}>${esc(g)} (${S.works.filter(w=>w.genre===g).length})</option>`).join('')}</select></label>
       <div><h4>Статус</h4><div class="chiprow">${[['','Любой'],['completed','Завершено'],['ongoing','В процессе'],['frozen','Заморожено']].map(([v,l])=>`<a class="chipbtn ${status===v?'on':''}" href="${link({status:v})}">${l}</a>`).join('')}</div></div>
       <label class="field">Сортировка<select id="catSort">${[['new','Сначала обновлённые'],['popular','По просмотрам'],['rating','По рейтингу рецензий'],['likes','По лайкам'],['az','По алфавиту']].map(([v,l])=>`<option value="${v}" ${sort===v?'selected':''}>${l}</option>`).join('')}</select></label>
       <a class="btn ghost sm" href="#/catalog">Сбросить фильтры</a>
     </aside>
     <div><div class="kicker">Каталог</div><h1 style="font-size:2.4rem;margin:12px 0 8px">${genre?esc(genre):type?esc(TYPE_LABEL[type]):'Все произведения'}</h1>
-    <p class="muted">Найдено: ${list.length} · всего на платформе: ${S.works.length}</p>
-    ${list.length?`<div class="grid works" style="margin-top:22px">${list.map(workCard).join('')}</div>`:`<div class="empty" style="margin-top:22px"><span class="big">✒</span>Здесь пока пусто. Станьте первым, кто опубликует произведение в этом уголке платформы.<br><br><a class="btn" href="#/studio/new">Опубликовать</a></div>`}
+    <p class="muted" role="status">Найдено: ${list.length} · всего на платформе: ${S.works.length}</p>
+    <p class="small muted">Только существующие произведения основателя и работы, добавленные авторами. Без демонстрационных книг.</p>
+    ${!q&&!genre&&!type&&!status&&S.groups.some(g=>groupWorks(g).length)?`<section class="block"><h2>Циклы и группы</h2><div class="grid two">${S.groups.filter(g=>groupWorks(g).length).map(groupCard).join('')}</div></section>`:''}
+    ${list.length?`<div class="grid works" style="margin-top:22px">${list.map(workCard).join('')}</div>`:`<div class="empty" style="margin-top:22px"><span class="big">✒</span>По вашему запросу ничего не найдено. Измените название или выберите другой жанр.<br><br><a class="btn" href="#/catalog">Сбросить фильтры</a></div>`}
     </div></div></div>`;
-  $('#catSearch').addEventListener('submit',e=>{e.preventDefault();const v=new FormData(e.target).get('q');location.hash=link({q:v})});
+  $('#catSearch').addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.target);location.hash=link({q:f.get('q').trim(),scope:f.get('scope')})});
+  $('#catGenre').addEventListener('change',e=>location.hash=link({genre:e.target.value}));
   $('#catSort').addEventListener('change',e=>location.hash=link({sort:e.target.value}));
 }
 
@@ -170,7 +191,7 @@ function pageWork(id){
     <div class="author-line">${ava(a,'md')}<div><a href="#/author/${a.id}" style="font-family:var(--serif);font-size:1.2rem"><b>${esc(a.displayName)}</b></a><div class="small muted">@${esc(a.username)} · ${followersOf(a.id)} подписчиков</div></div>
     ${u&&u.id!==a.id?`<button class="btn ${isFollowing(a.id)?'dark':'ghost'} sm" data-action="follow" data-id="${a.id}" style="margin-left:auto">${isFollowing(a.id)?'✓ Вы подписаны':'+ Подписаться'}</button>`:''}</div>
     <p style="font-family:var(--body);font-size:1.18rem;color:var(--muted)">${esc(w.description)}</p>
-    <div class="work-meta" style="font-size:.9rem"><span class="rate" style="font-size:1.05rem">${r?`★ ${r.outOf10.toFixed(1)} / 10 · ${r.total.toFixed(1)} из 21 · ${r.count} рец.`:'☆ Рецензий пока нет'}</span><span>👁 ${fmt(w.views||0)} просмотров</span><span>♥ ${likesOf(id)}</span><span>◈ ${chs.length} глав</span><span>✎ ${fmt(workWords(w))} слов</span><span>⏱ ~${readTime(w)} мин чтения</span><span>обновл. ${esc(w.updatedAt||'')}</span></div>
+    <div class="work-meta" style="font-size:.9rem"><span class="rate" style="font-size:1.05rem">${r?`★ ${r.outOf10.toFixed(1)} / 10 · ${r.total.toFixed(1)} из 21 · ${r.count} рец.`:'☆ Рецензий пока нет'}</span><span>👁 ${fmt(w.views||0)} просмотров</span><span>♥ ${likesOf(id)}</span>${w.legacyUrl?'<span>Полный авторский текст</span>':`<span>◈ ${chs.length} глав</span><span>✎ ${fmt(workWords(w))} слов</span><span>⏱ ~${readTime(w)} мин чтения</span>`}<span>обновл. ${esc(w.updatedAt||'')}</span></div>
     <div class="action-row">
       ${chs.length?`<a class="btn" href="#/read/${id}/${chs[0].id}">Читать →</a>`:''}
       ${w.legacyUrl?`<a class="btn ${chs.length?'ghost':''}" href="${esc(w.legacyUrl)}">Читать полный текст в исходной читалке ↗</a>`:''}
@@ -179,12 +200,13 @@ function pageWork(id){
       <button class="btn ghost" data-action="share" data-id="${id}">Поделиться</button>
       ${u&&u.id===w.authorId?`<a class="btn dark" href="#/studio/work/${id}">✎ Редактировать в студии</a>`:''}
     </div>
-    <div class="chiprow">${(w.tags||[]).map(t=>`<a class="tag" href="#/catalog?q=${encodeURIComponent(t.trim())}">#${esc(t.trim())}</a>`).join('')}</div>
+    <div class="chiprow">${(w.tags||[]).map(t=>`<a class="tag" href="#/catalog?scope=all&q=${encodeURIComponent(t.trim())}">#${esc(t.trim())}</a>`).join('')}</div>
     </div></div>
 
-    <section class="block"><div class="sec-head"><div><div class="kicker">Содержание</div><h2>${w.type==='poetry'?'Тексты':'Главы'} · ${chs.length}</h2></div></div>
+    ${groupsOf(id).map(g=>{const ws=groupWorks(g),i=ws.findIndex(x=>x.id===id);return `<section class="panel group-navigation"><div class="kicker">${esc(GROUP_KINDS[g.kind])}</div><h2><a href="#/group/${encodeURIComponent(g.id)}">${esc(g.title)}</a></h2><p class="small muted">Порядок чтения · ${i+1} из ${ws.length}</p><div class="chiprow">${ws.map((x,j)=>`<a class="chipbtn ${x.id===id?'on':''}" href="#/work/${x.id}" ${x.id===id?'aria-current="page"':''}>${j+1}. ${esc(x.title)}</a>`).join('')}</div><div class="action-row">${ws[i-1]?`<a class="btn ghost sm" href="#/work/${ws[i-1].id}">← Предыдущее</a>`:''}${ws[i+1]?`<a class="btn ghost sm" href="#/work/${ws[i+1].id}">Следующее →</a>`:''}</div></section>`;}).join('')}
+    ${w.legacyUrl?'':`<section class="block"><div class="sec-head"><div><div class="kicker">Содержание</div><h2>${w.type==='poetry'?'Тексты':'Главы'} · ${chs.length}</h2></div></div>
     ${chs.length?`<div class="chapter-list">${chs.map((c,i)=>`<a class="chapter-row" href="#/read/${id}/${c.id}"><span class="num">${String(i+1).padStart(2,'0')}</span><span style="flex:1"><b style="font-family:var(--serif);font-size:1.08rem">${esc(c.title)}</b><br><span class="small muted">${fmt(words(c.body))} слов · ~${Math.max(1,Math.round(words(c.body)/180))} мин · ${esc(c.createdAt||'')}</span></span><span style="color:var(--gold)">Читать →</span></a>`).join('')}</div>`
-    :`<div class="empty"><span class="big">◈</span>Автор ещё не опубликовал главы.</div>`}</section>
+    :`<div class="empty"><span class="big">◈</span>Автор ещё не опубликовал главы.</div>`}</section>`}
 
     <section class="block"><div class="sec-head"><div><div class="kicker">Рецензии · система пяти критериев</div><h2>Что говорят читатели</h2></div></div>
     ${r?`<div class="panel" style="margin-bottom:20px"><div style="display:flex;gap:26px;align-items:center;flex-wrap:wrap"><div><span style="font-family:var(--serif);font-size:3.2rem;color:var(--gold2)">${r.outOf10.toFixed(1)}</span><span class="muted"> / 10</span><div class="small muted">${r.total.toFixed(1)} из 21 балла · ${r.count} рецензий</div></div>
@@ -218,6 +240,7 @@ function pageWork(id){
 let readerSettings=JSON.parse(localStorage.getItem('chernila_reader')||'{"theme":"dark","size":20}');
 function pageRead(wid,cid){
   const w=work(wid); if(!w) return page404();
+  if(w.legacyUrl){location.replace(w.legacyUrl);return;}
   const chs=chaptersOf(wid); const idx=chs.findIndex(c=>c.id===cid); if(idx<0) return page404();
   const c=chs[idx], a=author(w.authorId), prev=chs[idx-1], next=chs[idx+1];
   setNav('catalog');
@@ -272,6 +295,7 @@ function pageAuthor(id){
     ${a.username==='cnizroman'?`<section class="block"><div class="panel"><div class="kicker">Наследие платформы</div><h2 style="margin:12px 0">Архив автора «Никто не вспомнит»</h2>
       <p class="muted">«Чернила» выросли из личного литературного проекта Cnizroman. Закулисье тетралогии сохранено полностью:</p>
       <div class="chiprow" style="margin-top:12px">${[['archive-references.html','🔗 Отсылки'],['archive-thoughts.html','💭 Изначальные мысли'],['archive-visual.html','🎨 Визуальный архив'],['archive-cut.html','Вырезанное'],['archive-drafts.html','✍ Черновики']].map(([h,l])=>`<a class="chipbtn" href="${h}">${l} ↗</a>`).join('')}</div></div></section>`:''}
+    ${S.groups.some(g=>g.authorId===id&&groupWorks(g).length)?`<section class="block"><h2>Циклы и группы</h2><div class="grid two">${S.groups.filter(g=>g.authorId===id&&groupWorks(g).length).map(groupCard).join('')}</div></section>`:''}
     <section class="block"><div class="sec-head"><div><div class="kicker">Библиография</div><h2>Произведения автора</h2></div></div>
     ${ws.length?`<div class="grid works">${ws.map(workCard).join('')}</div>`:'<div class="empty"><span class="big">✒</span>Произведений пока нет.</div>'}</section>
     ${revs.length?`<section class="block"><div class="sec-head"><div><div class="kicker">Голоса читателей</div><h2>Последние рецензии на автора</h2></div></div>
@@ -332,6 +356,7 @@ function pageContests(){
 function studioSide(on){return `<aside class="studio-side">
   <a href="#/studio" class="${on==='dash'?'on':''}">◈ Обзор и статистика</a>
   <a href="#/studio/works" class="${on==='works'?'on':''}">✎ Мои произведения</a>
+  <a href="#/studio/groups" class="${on==='groups'?'on':''}">◈ Циклы и группы</a>
   <a href="#/studio/new" class="${on==='new'?'on':''}">+ Новое произведение</a>
   <a href="#/profile" class="${on==='profile'?'on':''}">◍ Профиль автора</a>
   <a href="#/library">📚 Моя полка</a><a href="#/feed">✦ Моя лента</a>
@@ -375,6 +400,39 @@ function pageStudioWorks(){
     :'<div class="empty"><span class="big">✒</span>У вас пока нет произведений. Самое время исправить.<br><br><a class="btn" href="#/studio/new">Создать первое</a></div>'}
   </div></div></div>`;
 }
+function pageStudioGroups(id){
+  if(!guardStudio()) return; setNav('studio');
+  const mine=S.groups.filter(g=>g.authorId===me().id), g=id&&id!=='new'?mine.find(g=>g.id===id):null;
+  if(id&&id!=='new'&&!g) return page404();
+  const ws=S.works.filter(w=>w.authorId===me().id);
+  const ordered=g?[...groupWorks(g),...ws.filter(w=>!g.workIds.includes(w.id))]:ws;
+  $('#app').innerHTML=`<div class="wrap"><div class="studio-grid">${studioSide('groups')}<div>
+    <div class="kicker">Студия автора</div><h1>Циклы и группы</h1>
+    <p class="muted">Объединяйте свои произведения в дилогии, трилогии, тетралогии и серии. Тип группы — авторское обозначение: пролог можно включить отдельно, а незавершённый цикл — дополнять.</p>
+    ${!id?`<a class="btn" href="#/studio/groups/new">+ Создать группу</a><div class="stack" style="margin-top:24px">${mine.map(x=>`<article class="panel"><span class="pill gold">${esc(GROUP_KINDS[x.kind])}</span><h2>${esc(x.title)}</h2><p class="muted">Произведений: ${groupWorks(x).length}</p><div class="action-row"><a class="btn ghost sm" href="#/group/${encodeURIComponent(x.id)}">Открыть</a><a class="btn sm" href="#/studio/groups/${encodeURIComponent(x.id)}">Изменить состав и порядок</a><button class="btn danger sm" data-delete-group="${esc(x.id)}">Удалить группу</button></div></article>`).join('')||'<div class="empty">Групп пока нет. Создайте первую из своих произведений.</div>'}</div>`:
+    `<form id="groupForm" class="panel stack" style="margin-top:24px"><h2>${g?'Редактировать группу':'Новая группа'}</h2>
+      <label class="field">Название группы *<input class="input" name="title" required maxlength="140" value="${esc(g?.title||'')}" placeholder="Название вашего цикла"></label>
+      <label class="field">Тип группы<select name="kind">${Object.entries(GROUP_KINDS).map(([k,v])=>`<option value="${k}" ${g?.kind===k?'selected':''}>${v}</option>`).join('')}</select></label>
+      <label class="field">Описание<textarea class="input" name="description" maxlength="2000" rows="3" placeholder="О чём цикл? С чего начать чтение?">${esc(g?.description||'')}</textarea></label>
+      <fieldset class="group-members"><legend>Состав и порядок чтения</legend><p class="small muted">Отметьте существующие произведения и задайте порядок числами. При одинаковых номерах сохранение не выполнится. Для пролога можно указать 0.</p>
+      ${ordered.map((w,i)=>`<div class="group-member"><label><input type="checkbox" name="workId" value="${esc(w.id)}" ${g?.workIds.includes(w.id)?'checked':''}> <span>${esc(w.title)}</span></label><label class="field">Порядок<input class="input" type="number" min="0" max="999" step="1" data-order="${esc(w.id)}" aria-label="Порядок: ${esc(w.title)}" value="${i+1}"></label></div>`).join('')||'<p class="muted">Сначала <a class="more" href="#/studio/new">добавьте произведение</a>.</p>'}</fieldset>
+      <div class="action-row"><button class="btn" type="submit" ${ws.length?'':'disabled'}>Сохранить группу</button><a class="btn ghost" href="#/studio/groups">Отмена</a></div>
+    </form>`}</div></div></div>`;
+  $$('[data-delete-group]').forEach(b=>b.addEventListener('click',async()=>{
+    if(!confirm('Удалить только группу? Сами произведения и главы сохранятся.')) return;
+    b.disabled=true;try{await Store.deleteGroup(b.dataset.deleteGroup);toast('Группа удалена, произведения сохранены');route();}catch(e){toast(e.message,true);b.disabled=false;}
+  }));
+  const form=$('#groupForm'); if(!form) return;
+  form.addEventListener('submit',async e=>{
+    e.preventDefault();const f=new FormData(form), btn=form.querySelector('[type=submit]');
+    const selected=f.getAll('workId').map(id=>({id,order:$$('[data-order]',form).find(x=>x.dataset.order===id).value.trim()===''?NaN:Number($$('[data-order]',form).find(x=>x.dataset.order===id).value)}));
+    if(selected.some(x=>!Number.isInteger(x.order)||x.order<0||x.order>999)||new Set(selected.map(x=>x.order)).size!==selected.length){toast('Укажите разные целые номера порядка от 0 до 999.',true);return;}
+    btn.disabled=true;
+    try{await Store.upsertGroup({id:g?.id,title:f.get('title'),kind:f.get('kind'),description:f.get('description'),workIds:selected.sort((a,b)=>a.order-b.order).map(x=>x.id)});toast('Группа сохранена');location.hash='#/studio/groups';}
+    catch(err){toast(err.message,true);btn.disabled=false;}
+  });
+}
+
 function workFormHTML(w){
   w=w||{title:'',subtitle:'',type:'story',genre:'Драма',tags:[],description:'',status:'ongoing',ageRating:'12+',cover:{from:COVERS[0][0],to:COVERS[0][1],symbol:'✦'}};
   return `<form class="stack" id="workForm">
@@ -574,6 +632,7 @@ function route(){
   try{
     if(!seg.length) pageHome();
     else if(seg[0]==='catalog') pageCatalog(params);
+    else if(seg[0]==='group'&&seg[1]) pageGroup(decodeURIComponent(seg[1]));
     else if(seg[0]==='work'&&seg[1]) pageWork(decodeURIComponent(seg[1]));
     else if(seg[0]==='read'&&seg[1]&&seg[2]) pageRead(seg[1],seg[2]);
     else if(seg[0]==='author'&&seg[1]) pageAuthor(decodeURIComponent(seg[1]));
@@ -587,6 +646,7 @@ function route(){
     else if(seg[0]==='profile') pageProfile();
     else if(seg[0]==='admin') pageAdmin();
     else if(seg[0]==='studio'&&!seg[1]) pageStudio();
+    else if(seg[0]==='studio'&&seg[1]==='groups') pageStudioGroups(seg[2]?decodeURIComponent(seg[2]):null);
     else if(seg[0]==='studio'&&seg[1]==='works') pageStudioWorks();
     else if(seg[0]==='studio'&&seg[1]==='new') pageStudioNew();
     else if(seg[0]==='studio'&&seg[1]==='work'&&seg[2]) pageStudioWork(seg[2]);
