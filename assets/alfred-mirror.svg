@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#141416"/><stop offset="1" stop-color="#050507"/></linearGradient>
+ <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f1f1f3"/><stop offset="1" stop-color="#a2a2a8"/></linearGradient>
+</defs>
+<rect width="900" height="700" fill="url(#bg)"/>
+<rect x="205" y="55" width="490" height="590" fill="#09090b" stroke="#4a4a50" stroke-width="5"/>
+<rect x="225" y="75" width="450" height="550" fill="#111114" stroke="#252529" stroke-width="2"/>
+<ellipse cx="450" cy="260" rx="108" ry="142" fill="url(#glass)"/>
+<path d="M342 390 C320 430 300 490 300 590 L600 590 C600 490 580 430 558 390 C520 350 380 350 342 390Z" fill="#030305"/>
+<ellipse cx="305" cy="545" rx="32" ry="52" fill="#ededf0"/>
+<ellipse cx="595" cy="545" rx="32" ry="52" fill="#ededf0"/>
+<path d="M55 700 L55 570 C80 510 135 465 205 450 L205 645 L0 700Z" fill="#020204"/>
+<path d="M845 700 L845 570 C820 510 765 465 695 450 L695 645 L900 700Z" fill="#020204"/>
+<text x="450" y="675" text-anchor="middle" fill="#77777d" font-family="Georgia,serif" font-size="16" letter-spacing="5">АЛЬФРЕД · ОТРАЖЕНИЕ</text>
+</svg>

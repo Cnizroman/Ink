@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0a0908">
+<meta name="color-scheme" content="dark">
+<title>Чернила — платформа для авторов: рассказы, романы, стихотворения</title>
+<meta name="description" content="«Чернила» — тёмная литературная платформа для всех авторов. Публикуйте рассказы, романы, повести и стихотворения, находите читателей, получайте рецензии по пяти критериям и участвуйте в конкурсах. Первый автор платформы — Cnizroman с тетралогией «Никто не вспомнит».">
+<link rel="canonical" href="https://cnizroman.github.io/Nobody-came/">
+<meta property="og:type" content="website"><meta property="og:locale" content="ru_RU">
+<meta property="og:site_name" content="Чернила">
+<meta property="og:title" content="Чернила — платформа для авторов">
+<meta property="og:description" content="Место, где истории находят читателей, а авторы — друг друга. Рассказы, романы, стихи, конкурсы и честные рецензии.">
+<meta property="og:image" content="https://cnizroman.github.io/Nobody-came/assets/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0908'/%3E%3Cpath d='M32 10c7 10 12 16.5 12 24a12 12 0 1 1-24 0c0-7.5 5-14 12-24z' fill='none' stroke='%23c8a96e' stroke-width='3'/%3E%3Ccircle cx='32' cy='38' r='4' fill='%23c8a96e'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Manrope:wght@400;600;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="supabase-config.js"></script>
+<script src="data.js" defer></script>
+<script src="store.js" defer></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<div class="reader-progress" id="readProgress" style="width:0"></div>
+
+<header class="topbar">
+  <div class="wrap topbar-in">
+    <button class="burger" id="burger" aria-label="Меню">☰</button>
+    <a class="logo" href="#/"><span class="logo-mark">✒</span>Черни<em>ла</em></a>
+    <nav class="nav" id="mainNav" aria-label="Основная навигация">
+      <a href="#/" data-nav="home">Главная</a>
+      <a href="#/catalog" data-nav="catalog">Каталог</a>
+      <a href="#/authors" data-nav="authors">Авторы</a>
+      <a href="#/contests" data-nav="contests">Конкурсы</a>
+      <a href="#/feed" data-nav="feed">Лента</a>
+      <a href="#/library" data-nav="library">Моя полка</a>
+      <a href="#/studio" data-nav="studio">Студия автора</a>
+    </nav>
+    <form class="top-search" id="topSearch" role="search">
+      <span aria-hidden="true">⌕</span>
+      <input id="topSearchInput" type="search" placeholder="Название, автор, тег…" aria-label="Поиск по платформе">
+    </form>
+    <div class="userchip" id="userChip"></div>
+  </div>
+  <div class="mode-banner" id="modeBanner" hidden>
+    <div class="wrap"><span>● Локальный режим: данные пока хранятся в браузере каждого посетителя. Владельцу платформы осталось <a href="#/setup"><b>одно действие</b></a>, чтобы включить общую базу для всех.</span><span style="margin-left:auto">Вход основателя: <b>cnizroman</b> · <b>demo1234</b></span></div>
+  </div>
+</header>
+
+<main id="app" tabindex="-1">
+  <div class="wrap" style="padding:90px 20px;text-align:center;color:var(--muted)">
+    <div style="font-family:var(--serif);font-size:2.4rem;color:var(--gold)">✒</div>
+    <p>Чернила наливаются…</p>
+  </div>
+</main>
+
+<footer class="site">
+  <div class="wrap foot-grid">
+    <div>
+      <a class="logo" href="#/" style="margin-bottom:14px"><span class="logo-mark">✒</span>Черни<em>ла</em></a>
+      <p>Гигантская тёмная платформа для авторов рассказов, историй, стихотворений и всего, что пишется буквами. Место, где истории находят читателей, а авторы — друг друга.</p>
+      <p class="small">Родилась из авторского проекта Cnizroman «Никто не вспомнит». Теперь — для всех, кого никто не вспомнит. Пока они не напишут.</p>
+    </div>
+    <div><h4>Читать</h4><nav>
+      <a href="#/catalog">Каталог произведений</a><a href="#/catalog?type=poetry">Стихотворения</a>
+      <a href="#/catalog?type=story">Рассказы</a><a href="#/catalog?type=novel">Романы</a><a href="#/feed">Лента обновлений</a>
+    </nav></div>
+    <div><h4>Авторам</h4><nav>
+      <a href="#/studio">Студия автора</a><a href="#/studio/new">Опубликовать произведение</a>
+      <a href="#/contests">Конкурсы</a><a href="#/authors">Сообщество авторов</a><a href="#/about">Как устроена платформа</a><a href="#/setup">Запуск общей базы</a>
+    </nav></div>
+    <div><h4>Первый автор</h4><nav>
+      <a href="#/author/cnizroman">Cnizroman и его книги</a>
+      <a href="intro.html">Не с начала... (пролог)</a><a href="belaya-golova.html">Белая голова</a>
+      <a href="archive-visual.html">Архив автора</a>
+      <a href="https://www.donationalerts.com/r/cnizroman" target="_blank" rel="noopener">Поддержать основателя ↗</a>
+    </nav></div>
+  </div>
+  <div class="wrap" style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:36px;padding-top:20px;border-top:1px solid var(--line);font-size:.86rem">
+    <span>© 2026 · Чернила. Все тексты принадлежат их авторам.</span><span>Читайте медленно. Пишите честно.</span>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div id="modalRoot"></div>
+<script>if('serviceWorker' in navigator){addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}</script>
+</body>
+</html>
