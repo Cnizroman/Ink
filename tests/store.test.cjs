@@ -251,3 +251,19 @@ test('PostgREST Prefer is scoped to REST and never sent to Auth or Edge login',a
 test('login infrastructure failures are not reported as incorrect credentials',async()=>{
  for(const status of [404,500,502]){const remote=async(url)=>new URL(url).pathname.startsWith('/functions/')?{ok:false,status,text:async()=>'{"message":"upstream failure"}'}:{ok:true,text:async()=>JSON.stringify([])};const {store}=harness({remote});await store.init();await assert.rejects(store.login({login:'cnizroman',password:'correct-password'}),new RegExp('HTTP '+status));assert.equal(store.session,null);}
 });
+
+test('profile headers are always expanded and saving without removed fields preserves avatar fallback',async()=>{
+ const {store}=harness();await store.init();await founder(store);const hue=store.currentUser().hue;
+ assert.equal(store.cleanCustomization({layout:'compact'}).layout,'expanded');await store.updateProfile({displayName:'Имя автора',customization:{layout:'compact'}});assert.equal(store.currentUser().hue,hue);assert.equal(store.currentUser().customization.layout,'expanded');
+});
+
+test('social linking checks enabled Auth providers before redirect and supports current X identities',async()=>{
+ let enabled=false,authorization='',redirect='';const remote=async(url)=>{const p=new URL(url).pathname;let body=[];
+ if(p==='/auth/v1/settings')body={external:{x:enabled,github:false,email:true}};
+ if(p==='/auth/v1/user')body={id:'writer',email_confirmed_at:'2026-01-01',identities:[{provider:'email'}]};
+ if(p==='/auth/v1/user/identities/authorize'){authorization=url;body={url:'https://x.com/oauth/authorize'};}
+ return {ok:true,text:async()=>JSON.stringify(body)};};
+ const {store,ctx,ephemeral}=harness({remote});await store.init();store.state.authors.push({id:'writer',username:'writer'});store.setSession({authorId:'writer',token:'session'});ctx.location={origin:'https://site.test',pathname:'/Ink/',assign:url=>redirect=url};
+ await assert.rejects(store.beginSocialLink('twitter'),/не настроена/);assert.equal(authorization,'');assert.equal(ephemeral.get('chernila_social_pending'),undefined);
+ enabled=true;await store.beginSocialLink('twitter');assert.match(authorization,/provider=x&/);assert.equal(redirect,'https://x.com/oauth/authorize');assert.equal(JSON.parse(ephemeral.get('chernila_social_pending')).provider,'x');
+});

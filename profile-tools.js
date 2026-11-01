@@ -13,6 +13,15 @@ const networks=[
   {id:'facebook',label:'Facebook',hosts:['facebook.com'],base:'https://www.facebook.com/',hint:'Имя страницы',provider:'facebook'},
   {id:'linkedin',label:'LinkedIn',hosts:['linkedin.com'],base:'https://www.linkedin.com/in/',hint:'Имя профиля',provider:'linkedin_oidc'}
 ];
+const providers=n=>n.provider==='twitter'?['twitter','x']:n.provider?[n.provider]:[];
+function identityLink(n,identity){
+  const data=identity?.identity_data||{};let value='';
+  if(['github','twitch','twitter'].includes(n.id))value=data.user_name||data.preferred_username||'';
+  if(n.id==='discord'){const id=String(data.provider_id||data.sub||data.id||'');if(/^\d{15,22}$/.test(id))value=id;}
+  if(n.id==='facebook'){const id=String(data.provider_id||data.sub||data.id||'');if(/^\d+$/.test(id))value='https://www.facebook.com/profile.php?id='+id;}
+  if(n.id==='linkedin')value=data.vanity_name||data.public_profile_url||'';
+  try{return value?socialLink(n.id,value):null;}catch(_){return null;}
+}
 function socialLink(network,value){
   const n=networks.find(n=>n.id===network);if(!n)throw new Error('Выберите соцсеть из списка.');
   value=String(value||'').trim();if(!value)throw new Error('Укажите имя профиля или ссылку.');
@@ -67,5 +76,5 @@ function mountMedia(host,slot,existing,onChange,onError){
     dispose(){disposed=true;revision++;image?.close?.();}
   };
 }
-const api={networks,socialLink,cleanSocialLinks,validateImage,cropRect,mountMedia};root.InkProfileTools=api;if(typeof module!=='undefined')module.exports=api;
+const api={networks,providers,identityLink,socialLink,cleanSocialLinks,validateImage,cropRect,mountMedia};root.InkProfileTools=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

@@ -14,3 +14,13 @@ test('image constraints reject unsafe types, oversized files and invalid crop ge
   for(const x of [0,50,100])for(const y of [0,50,100])for(const z of [1,2,3]){const r=cropRect(400,800,1600,500,x,y,z);assert.ok(r.sx>=0&&r.sy>=0&&r.sx+r.sw<=400.0001&&r.sy+r.sh<=800.0001);}
   assert.throws(()=>cropRect(0,200,512,512));
 });
+
+test('verified identity links are derived safely and X aliases match actual providers',()=>{
+ const {identityLink,providers}=require('../profile-tools.js'),find=id=>networks.find(n=>n.id===id);
+ assert.deepEqual(providers(find('twitter')),['twitter','x']);assert.deepEqual(providers(find('telegram')),[]);
+ assert.equal(identityLink(find('github'),{identity_data:{user_name:'real_owner'}}).url,'https://github.com/real_owner');
+ assert.equal(identityLink(find('github'),{identity_data:{user_name:'javascript:alert(1)'}}),null);
+ assert.equal(identityLink(find('discord'),{identity_data:{sub:'123456789012345678'}}).url,'https://discord.com/users/123456789012345678');
+ assert.equal(identityLink(find('discord'),{identity_data:{user_name:'not-a-discord-id'}}),null);
+ assert.equal(identityLink(find('linkedin'),{identity_data:{public_profile_url:'https://evil.test/'}}),null);
+});

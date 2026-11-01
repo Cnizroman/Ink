@@ -22,7 +22,7 @@ function cleanCustomization(c={},allowDataImages=false){
   const color=(v,f)=>/^#[0-9a-f]{6}$/i.test(v||'')?v:f;
   const url=v=>{v=String(v||'').trim();if(!v)return '';if(v.length>1000||!/^https:\/\//i.test(v))throw new Error('Ссылки должны начинаться с https:// и быть не длиннее 1000 символов.');return v;};
   const media=v=>{v=String(v||'');if(allowDataImages&&/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(v)&&v.length<=1500000)return v;return url(v);};
-  return {avatarUrl:media(c.avatarUrl),bannerUrl:media(c.bannerUrl),socialLinks:InkProfileTools.cleanSocialLinks(c.socialLinks||[]),website:url(c.website),telegram:url(c.telegram),accent:color(c.accent,'#c8a96e'),bannerColor:color(c.bannerColor,'#302418'),pronouns:String(c.pronouns||'').slice(0,60),genres:(Array.isArray(c.genres)?c.genres:[]).map(String).slice(0,8).map(x=>x.slice(0,60)),layout:c.layout==='compact'?'compact':'expanded',showLocation:c.showLocation!==false,showStats:c.showStats!==false};
+  return {avatarUrl:media(c.avatarUrl),bannerUrl:media(c.bannerUrl),socialLinks:InkProfileTools.cleanSocialLinks(c.socialLinks||[]),website:url(c.website),telegram:url(c.telegram),accent:color(c.accent,'#c8a96e'),bannerColor:color(c.bannerColor,'#302418'),pronouns:String(c.pronouns||'').slice(0,60),genres:(Array.isArray(c.genres)?c.genres:[]).map(String).slice(0,8).map(x=>x.slice(0,60)),layout:'expanded',showLocation:c.showLocation!==false,showStats:c.showStats!==false};
 }
 function safeLegacyUrl(id,url){const seed=window.CHERNILA_SEED.works.find(w=>w.id===id);return seed&&seed.legacyUrl===url?url:null;}
 function seedState(){
@@ -292,16 +292,23 @@ const Store={
     if(user.id!==this.currentUser().id)throw new Error('Сессия принадлежит другому аккаунту.');
     return user.identities||[];
   },
+  async socialProviders(){
+    if(this.mode!=='supabase')return [];
+    const settings=await sbFetch('/auth/v1/settings');
+    if(!settings?.external||typeof settings.external!=='object')throw new Error('Не удалось проверить доступность соцсетей.');
+    return Object.keys(settings.external).filter(p=>settings.external[p]===true);
+  },
   async beginSocialLink(network){
     if(this.mode!=='supabase')throw new Error('Настоящее подключение доступно только с общей базой Supabase. Локально можно сохранить публичную ссылку.');
     const me=this.currentUser(),n=InkProfileTools.networks.find(n=>n.id===network);
     if(!me||!n?.provider)throw new Error('Эта сеть доступна только как публичная ссылка, не как OAuth-подключение.');
+    const available=await this.socialProviders(),provider=InkProfileTools.providers(n).find(p=>available.includes(p));if(!provider)throw new Error(n.label+': авторизация ещё не настроена владельцем сайта.');
     const user=await sbFetch('/auth/v1/user');if(user.id!==me.id)throw new Error('Войдите в свой аккаунт заново.');
     if(!user.email_confirmed_at)throw new Error('Сначала подтвердите email аккаунта.');
     const nonce=uid(),redirect=new URL(location.pathname,location.origin);redirect.searchParams.set('ink_social',nonce);
-    const pending={nonce,authorId:me.id,network,provider:n.provider,expires:Date.now()+15*60*1000};
+    const pending={nonce,authorId:me.id,network,provider,expires:Date.now()+15*60*1000};
     sessionStorage.setItem('chernila_social_pending',JSON.stringify(pending));
-    try{const data=await sbFetch('/auth/v1/user/identities/authorize?provider='+encodeURIComponent(n.provider)+'&redirect_to='+encodeURIComponent(redirect.href));
+    try{const data=await sbFetch('/auth/v1/user/identities/authorize?provider='+encodeURIComponent(provider)+'&redirect_to='+encodeURIComponent(redirect.href));
       const target=new URL(data.url);if(target.protocol!=='https:')throw new Error('Некорректный адрес авторизации.');location.assign(target.href);
     }catch(e){sessionStorage.removeItem('chernila_social_pending');throw new Error('OAuth не запущен. Включите провайдер и Manual Linking в Supabase. '+e.message);}
   },
