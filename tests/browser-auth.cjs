@@ -3,7 +3,7 @@ process.chdir(require('node:path').resolve(__dirname,'..'));
 const {chromium:pw}=require('playwright-core'),cp=require('@sparticuz/chromium'),assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const {handler}=require('./helpers/username-login.cjs');
 (async()=>{
- const edge=handler({dynamicCredentials:true});let postCount=0,preflightCount=0,lastLoginHeaders=null,serverFailure=false;
+ const edge=handler({dynamicCredentials:true});let postCount=0,preflightCount=0,lastLoginHeaders=null,serverFailure=false,signupFault='email_address_not_authorized',signupPosts=0;
  const profile={id:'owner',username:'cnizroman',display_name:'Cnizroman',role:'admin',is_founder:true,customization:{}};
  const server=http.createServer(async(req,res)=>{
   try{
@@ -17,7 +17,7 @@ const {handler}=require('./helpers/username-login.cjs');
     if(serverFailure&&req.method==='POST')response=new Response(JSON.stringify({code:'WORKER_ERROR',message:'Internal error'}),{status:500,headers:response.headers});
    }else{
     const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, apikey, content-type, prefer','Access-Control-Allow-Methods':'GET,POST,PATCH,DELETE,OPTIONS'};
-    response=req.method==='OPTIONS'?new Response(null,{status:204,headers:cors}):new Response(JSON.stringify(url.pathname==='/rest/v1/profiles'?[profile]:[]),{headers:{...cors,'Content-Type':'application/json'}});
+    response=url.pathname==='/auth/v1/signup'&&req.method==='POST'?(signupPosts++,new Response(JSON.stringify(signupFault?{error_code:signupFault,msg:'Email address not authorized'}:{id:'new-writer',identities:[]}),{status:signupFault?400:200,headers:{...cors,'Content-Type':'application/json'}})):req.method==='OPTIONS'?new Response(null,{status:204,headers:cors}):new Response(JSON.stringify(url.pathname==='/rest/v1/profiles'?[profile]:[]),{headers:{...cors,'Content-Type':'application/json'}});
    }
    res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));
   }catch(_){res.writeHead(500);res.end();}
@@ -46,6 +46,8 @@ const {handler}=require('./helpers/username-login.cjs');
   await page.evaluate(()=>Store.logout());await page.goto(site+'/#/auth');await page.waitForSelector('#authForm');
   await page.locator('[name=login]').fill('cnizroman');await page.locator('[name=password]').fill('wrong-password');await page.locator('#authForm button').click();await page.getByText('Неверный логин или пароль.',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>Store.currentUser()),null);
   serverFailure=true;await page.locator('[name=password]').fill('correct-password');await page.locator('#authForm button').click();await page.getByText(/HTTP 500/).waitFor();assert.equal(await page.evaluate(()=>Store.currentUser()),null);
-  assert.deepEqual(errors,[]);console.log('PASS real-CORS browser: legacy preflight, username login -> admin, no Prefer on Edge, credential vs infrastructure errors; browser security enabled');
+  await page.goto(site+'/#/auth?mode=signup');await page.waitForSelector('#authForm [name=username]');await page.locator('[name=username]').fill('new_writer');await page.locator('[name=displayName]').fill('Writer');await page.locator('[name=email]').fill('writer@example.com');await page.locator('[name=password]').fill('secret-password');await page.locator('#authForm button').click();await page.getByText(/нужен собственный SMTP/).waitFor();assert.equal(await page.locator('#authFeedback').getAttribute('data-kind'),'error');assert.equal(await page.evaluate(()=>Store.currentUser()),null);
+  signupFault=null;await page.locator('#authForm button').click();await page.locator('#authFeedback[data-kind=success]').waitFor();assert.match(await page.locator('#authFeedback').innerText(),/Подтвердите email/);assert.equal(await page.evaluate(()=>Store.currentUser()),null);assert.equal(await page.locator('[name=password]').inputValue(),'');assert.ok(page.url().endsWith('/#/auth?mode=signup'));assert.equal(signupPosts,2);assert.equal(await page.locator('#authForm button').isDisabled(),true);
+  assert.deepEqual(errors,[]);console.log('PASS real-CORS browser: legacy preflight, username login -> admin, no Prefer on Edge, credential vs infrastructure errors, signup SMTP errors and pending email confirmation; browser security enabled');
  }finally{if(browser)await browser.close();await Promise.all([new Promise(resolve=>server.close(resolve)),new Promise(resolve=>web.close(resolve))]);}
 })().catch(e=>{console.error(e);process.exit(1)});

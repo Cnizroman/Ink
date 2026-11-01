@@ -554,20 +554,28 @@ function pageAuth(params){
   $('#app').innerHTML=`<div class="wrap"><div class="auth-box reveal"><div class="panel" style="padding:36px">
    <div style="text-align:center;font-family:var(--serif);font-size:2.6rem;color:var(--gold)">✒</div>
    <h1 style="text-align:center;font-size:2rem;margin:8px 0 6px">${mode==='signup'?'Стать автором «Чернил»':'С возвращением'}</h1>
-   <p class="muted center">${mode==='signup'?'Минута — и у вас студия, редактор, подписчики и первые читатели.':'Ваши черновики и полка скучали.'}</p>
+   <p class="muted center">${mode==='signup'?'Создайте аккаунт и подтвердите email, чтобы открыть студию автора.':'Ваши черновики и полка скучали.'}</p>
    <div class="tabs" style="justify-content:center;margin-top:18px"><a href="#/auth" class="${mode==='login'?'on':''}">Вход</a><a href="#/auth?mode=signup" class="${mode==='signup'?'on':''}">Регистрация</a></div>
    <form class="stack" id="authForm">
-   ${mode==='signup'?`<label class="field">Логин (юзернейм) *<input class="input" name="username" required placeholder="ваш_логин" autocomplete="username"></label>
+   ${mode==='signup'?`<label class="field">Логин (юзернейм) *<input class="input" name="username" required minlength="3" maxlength="30" pattern="[A-Za-z0-9_]{3,30}" title="От 3 до 30 символов: латинские буквы, цифры и подчёркивание" placeholder="writer_name" autocomplete="username"><span class="small muted">3–30 символов: a–z, 0–9 и _.</span></label>
    <label class="field">Имя или псевдоним *<input class="input" name="displayName" required placeholder="Как вас будут знать читатели"></label>
    <label class="field">Email *<input class="input" name="email" type="email" required autocomplete="email"></label>`
    :`<label class="field">Логин (юзернейм)<input class="input" name="login" required autocomplete="username" placeholder="cnizroman"></label>`}
    <label class="field">Пароль *<input class="input" name="password" type="password" required minlength="6" autocomplete="${mode==='signup'?'new-password':'current-password'}"></label>
    <button class="btn" type="submit" style="justify-content:center">${mode==='signup'?'Создать аккаунт автора':'Войти'}</button>
+   <p id="authFeedback" class="auth-feedback small" role="status" aria-live="polite" hidden></p>
    <p class="small muted center">${Store.mode==='supabase'?'Вход по юзернейму. Также можно ввести email аккаунта. Данные хранятся в Supabase Auth.':'Локальный режим: аккаунт создаётся в вашем браузере. Вход основателя: <b>cnizroman</b> / <b>demo1234</b>'}</p>
    </form></div></div></div>`;
-  $('#authForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));const btn=e.target.querySelector('button[type=submit]');btn.disabled=true;
-    try{ if(mode==='signup') await Store.signup(f); else await Store.login(f); renderUserChip(); toast('Добро пожаловать в «Чернила», '+me().displayName+' ✒'); location.hash='#/studio'; }
-    catch(err){ toast(err.message,true); btn.disabled=false; }});
+  const form=$('#authForm'),btn=form.querySelector('button[type=submit]'),feedback=$('#authFeedback');let submitting=false;
+  form.addEventListener('input',()=>{if(!submitting){btn.disabled=false;feedback.hidden=true;}});
+  form.addEventListener('submit',async e=>{e.preventDefault();if(submitting||btn.disabled)return;const f=Object.fromEntries(new FormData(form));submitting=true;btn.disabled=true;feedback.hidden=true;let pending=false;
+    try{
+      const result=mode==='signup'?await Store.signup(f):await Store.login(f);
+      if(result?.confirmationRequired){pending=true;form.elements.password.value='';feedback.dataset.kind='success';feedback.textContent='Подтвердите email, чтобы завершить регистрацию. Проверьте входящие и папку «Спам», затем войдите по своему логину. Если аккаунт уже есть, используйте вкладку «Вход».';feedback.hidden=false;return;}
+      renderUserChip();toast('Добро пожаловать в «Чернила», '+me().displayName+' ✒');location.hash='#/studio';
+    }catch(err){feedback.dataset.kind='error';feedback.textContent=err.message;feedback.hidden=false;}
+    finally{submitting=false;btn.disabled=pending;}
+  });
 }
 
 

@@ -383,3 +383,8 @@ html[data-site-theme=personal] .topbar,html[data-site-theme=personal] .reader-to
 html[data-site-theme=personal] .progress-line,html[data-site-theme=personal] .scorebar .bar{background:var(--line2)}
 html[data-site-theme=personal] .btn.danger{color:var(--text);border-color:var(--red)}
 @media(max-width:700px){.social-account-grid{grid-template-columns:minmax(0,1fr)}.social-account-card{padding:14px}.personal-theme .action-row .btn{white-space:normal}}
+
+/* Keep registration outcome visible; pending email confirmation is not an error. */
+.auth-feedback{margin:0;padding:14px 16px;border:1px solid var(--line2);border-radius:12px;color:var(--text);line-height:1.7;overflow-wrap:anywhere}
+.auth-feedback[data-kind=success]{border-color:color-mix(in srgb,var(--green) 55%,var(--line2));background:color-mix(in srgb,var(--green) 7%,var(--panel))}
+.auth-feedback[data-kind=error]{border-color:color-mix(in srgb,var(--red) 65%,var(--line2));background:color-mix(in srgb,var(--red) 7%,var(--panel))}

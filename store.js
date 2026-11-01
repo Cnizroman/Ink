@@ -206,19 +206,26 @@ const Store={
     this.setSession({...original,token:data.access_token,refreshToken:data.refresh_token||original.refreshToken,expiresAt:tokenExpiry(data.access_token)||Date.now()+(data.expires_in||3600)*1000});
   },
   async signup({username,displayName,email,password}){
-    username=(username||'').trim().toLowerCase().replace(/[^a-z0-9_]/g,'');
-    if(username.length<3||username.length>30) throw new Error('Логин: от 3 до 30 символов, только латиница, цифры и подчёркивание.');
+    username=(username||'').trim().toLowerCase();
+    if(!/^[a-z0-9_]{3,30}$/.test(username)) throw new Error('Логин: от 3 до 30 символов, только латиница, цифры и подчёркивание.');
     if(this.state.authors.some(a=>a.username===username&&!(this.mode==='supabase'&&a.id==='cnizroman'))) throw new Error('Такой логин уже занят.');
     if(!/.+@.+\..+/.test(email||'')) throw new Error('Укажите корректный email.');
     if((password||'').length<6) throw new Error('Пароль: минимум 6 символов.');
     if(this.mode==='supabase'){
-      const data=await sbFetch('/auth/v1/signup',{method:'POST',body:JSON.stringify({email,password,data:{username,display_name:displayName||username}})});
-      let authId=data.user&&data.user.id,token=data.access_token||null,refreshToken=data.refresh_token||null;
-      if(!authId) throw new Error('Не удалось создать аккаунт. Попробуйте другой email.');
-      if(!token){ // При включённом Confirm email вход станет доступен после письма
-        try{ const li=await sbFetch('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email,password})}); token=li.access_token;authId=li.user.id;refreshToken=li.refresh_token||null; }
-        catch(e){ throw new Error('Аккаунт создан. Если вход не удался, подтвердите email по письму и войдите.'); }
+      let data;
+      try{data=await sbFetch('/auth/v1/signup',{method:'POST',body:JSON.stringify({email:email.trim(),password,data:{username,display_name:displayName||username}})});}
+      catch(e){
+        if(e.code==='email_address_not_authorized')throw new Error('Почта сайта пока не настроена для регистрации новых пользователей. Сообщите владельцу сайта: email_address_not_authorized (нужен собственный SMTP).');
+        if(e.code==='over_email_send_rate_limit')throw new Error('Достигнут лимит писем подтверждения. Не отправляйте форму повторно: попробуйте позже или сообщите владельцу сайта о лимите почты.');
+        if(e.code==='signup_disabled'||e.code==='email_provider_disabled')throw new Error('Регистрация по email отключена на сервере. Сообщите владельцу сайта.');
+        throw e;
       }
+      // GoTrue returns a bare User when confirmation is required, and {user, ...tokens}
+      // when a session is available. Do not treat successful pending signup as a failure.
+      const authUser=data?.user||(data?.id?data:null);
+      if(!authUser?.id)throw new Error('Сервис регистрации вернул некорректный ответ. Повторите позже.');
+      const authId=authUser.id,token=data.access_token||null,refreshToken=data.refresh_token||null;
+      if(!token)return {confirmationRequired:true};
       sbToken=token;
       // профиль уже создал триггер handle_new_user — просто забираем его
       let author=null;

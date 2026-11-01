@@ -288,3 +288,23 @@ test('OAuth launch errors distinguish transport, response format, and actual dis
   assert.equal(store.session.token,'original');assert.equal(ephemeral.get('chernila_social_pending'),undefined);
  }
 });
+
+test('cloud signup accepts bare or wrapped pending users without fake sessions or password-login retries',async()=>{
+ for(const wrapped of [false,true]){
+  const calls=[];const remote=async(url,opts={})=>{const p=new URL(url).pathname;calls.push({url,opts});let body=[];if(p==='/auth/v1/signup'){const user={id:'new-writer',identities:[]};body=wrapped?{user}:user;}return {ok:true,text:async()=>JSON.stringify(body)};};
+  const {store,storage}=harness({remote});await store.init();calls.length=0;const result=await store.signup({username:'new_writer',email:'writer@example.com',password:'secret-password'});
+  assert.equal(result.confirmationRequired,true);assert.equal(store.session,null);assert.equal(store.currentUser(),null);assert.equal(store.state.authors.some(a=>a.id==='new-writer'),false);assert.equal(calls.length,1);assert.ok(calls[0].url.endsWith('/auth/v1/signup'));assert.equal(calls[0].opts.headers.Prefer,undefined);assert.ok(![...storage.values()].join('').includes('secret-password'));
+ }
+});
+test('signup reports actual SMTP restrictions, email quota and disabled registration separately',async()=>{
+ for(const code of ['email_address_not_authorized','over_email_send_rate_limit','signup_disabled']){
+  const {store}=harness({remote:async url=>({ok:!url.includes('/auth/v1/signup'),status:400,text:async()=>JSON.stringify(url.includes('/auth/v1/signup')?{error_code:code,msg:'upstream failure'}:[])})});await store.init();
+  await assert.rejects(store.signup({username:'new_writer',email:'writer@example.com',password:'secret-password'}),code==='email_address_not_authorized'?/SMTP/:code==='over_email_send_rate_limit'?/лимит писем/:/отключена/);assert.equal(store.session,null);
+ }
+});
+test('cloud signup with an immediate session still loads its actual profile',async()=>{
+ const {store}=harness({remote:async url=>{const u=new URL(url);let body=[];if(u.pathname==='/auth/v1/signup')body={user:{id:'new-writer'},access_token:'signup-token',refresh_token:'signup-refresh'};if(u.pathname==='/rest/v1/profiles'&&u.searchParams.has('id'))body=[{id:'new-writer',username:'new_writer',display_name:'Writer',role:'author'}];return {ok:true,text:async()=>JSON.stringify(body)};}});await store.init();await store.signup({username:'new_writer',email:'writer@example.com',password:'secret-password'});assert.equal(store.currentUser().id,'new-writer');assert.equal(store.session.token,'signup-token');assert.equal(store.currentUser().role,'author');
+});
+test('signup rejects non-Latin usernames instead of silently changing their spelling',async()=>{
+ const {store}=harness();await store.init();for(const username of ['ваш_логин','roman!','ab','a'.repeat(31)])await assert.rejects(store.signup({username,email:'writer@example.com',password:'secret-password'}),/Логин:/);
+});
