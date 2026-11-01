@@ -24,3 +24,9 @@ test('verified identity links are derived safely and X aliases match actual prov
  assert.equal(identityLink(find('discord'),{identity_data:{user_name:'not-a-discord-id'}}),null);
  assert.equal(identityLink(find('linkedin'),{identity_data:{public_profile_url:'https://evil.test/'}}),null);
 });
+
+test('all social brands use safe local SVGs with a non-interpolated fallback',()=>{
+ const {socialIcon}=require('../profile-tools.js');
+ for(const n of networks){const icon=socialIcon(n.id);assert.ok(icon.includes(`data-social-icon="${n.id}"`));assert.match(icon,/viewBox="0 0 24 24"/);assert.match(icon,/aria-hidden="true"/);assert.match(icon,/<path d="[Mm]/);assert.ok(!/https?:|<script|<image|onload|foreignObject/.test(icon));}
+ for(const value of ['<script>alert(1)</script>','constructor','__proto__',undefined])assert.ok(socialIcon(value).includes('data-social-icon="website"'));
+});
