@@ -388,3 +388,13 @@ html[data-site-theme=personal] .btn.danger{color:var(--text);border-color:var(--
 .auth-feedback{margin:0;padding:14px 16px;border:1px solid var(--line2);border-radius:12px;color:var(--text);line-height:1.7;overflow-wrap:anywhere}
 .auth-feedback[data-kind=success]{border-color:color-mix(in srgb,var(--green) 55%,var(--line2));background:color-mix(in srgb,var(--green) 7%,var(--panel))}
 .auth-feedback[data-kind=error]{border-color:color-mix(in srgb,var(--red) 65%,var(--line2));background:color-mix(in srgb,var(--red) 7%,var(--panel))}
+
+/* Manual review: clear author status and a readable, responsive moderator inbox. */
+.publication-state,.review-queue{margin-bottom:22px}.publication-state p{line-height:1.7}.publication-state p:last-child{margin-bottom:0}
+.moderation-warning{padding:16px;border:1px solid var(--gold);border-radius:12px;color:var(--text)}
+.review-request{border:1px solid var(--line2);border-radius:14px;margin-top:14px;overflow:hidden}
+.review-request>summary{display:flex;gap:12px;justify-content:space-between;align-items:center;padding:18px;cursor:pointer;list-style:none}
+.review-request>summary small{display:block;color:var(--muted);margin-top:5px;font-size:.74rem}.review-request>summary>span:first-child{min-width:0;overflow-wrap:anywhere}
+.review-request-body{padding:0 18px 18px}.review-chapter{padding:22px 0;border-top:1px solid var(--line2)}.review-chapter h3{margin-bottom:18px}.review-chapter .reader-text{font-size:1.05rem;max-width:100%;overflow-wrap:anywhere}
+.review-decision{padding-top:18px;border-top:1px solid var(--line2)}.review-queue .sec-head{flex-wrap:wrap;gap:14px}.review-request textarea{max-width:100%}
+@media(max-width:560px){.review-queue{padding:16px}.review-request>summary,.review-request-body{padding:14px}.review-request>summary{align-items:flex-start;flex-wrap:wrap}.review-decision .btn{width:100%;justify-content:center}}

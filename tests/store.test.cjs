@@ -181,7 +181,7 @@ test('profile media is uploaded with a binary content type and is owned by curre
  const {store}=harness({remote});await store.init();store.state.authors.push({id:'writer',username:'writer'});store.setSession({authorId:'writer',token:'test'});
  const result=await store.uploadProfileImage(new Blob(['image bytes'],{type:'image/webp'}),'avatarUrl');
  assert.match(result,/profile-media\/writer\/avatarUrl-/);
- const upload=requests.find(r=>r.opts.method==='POST');assert.equal(upload.opts.headers['Content-Type'],'image/webp');assert.ok(upload.opts.body instanceof Blob);
+ const upload=requests.find(r=>r.opts.method==='POST'&&r.url.includes('/storage/'));assert.equal(upload.opts.headers['Content-Type'],'image/webp');assert.ok(upload.opts.body instanceof Blob);
  await assert.rejects(store.uploadProfileImage(new Blob(['x'],{type:'image/svg+xml'}),'avatarUrl'));
  await store.removeProfileImage('https://example.invalid/storage/v1/object/public/profile-media/someone-else/file.webp');assert.equal(requests.filter(r=>r.opts.method==='DELETE').length,0);
  await store.removeProfileImage(result);assert.equal(requests.filter(r=>r.opts.method==='DELETE').length,1);
@@ -307,4 +307,32 @@ test('cloud signup with an immediate session still loads its actual profile',asy
 });
 test('signup rejects non-Latin usernames instead of silently changing their spelling',async()=>{
  const {store}=harness();await store.init();for(const username of ['ваш_логин','roman!','ab','a'.repeat(31)])await assert.rejects(store.signup({username,email:'writer@example.com',password:'secret-password'}),/Логин:/);
+});
+
+test('manual review: ordinary authors cannot publish directly; reject, resubmit, approve and edits invalidate visibility',async()=>{
+ const {store}=harness();await store.init();await store.signup({username:'writer',email:'writer@example.com',password:'password'});const user=store.currentUser(),w={...clone(store.state.works[0]),id:store.uid(),authorId:user.id,legacyUrl:null,title:'Review me'};
+ await store.upsertWork({...w,moderationStatus:'approved'});const stored=store.state.works.find(x=>x.id===w.id);assert.equal(stored.moderationStatus,'draft');
+ const c={id:store.uid(),workId:w.id,title:'Chapter',body:'Text',status:'published',order:1};await store.upsertChapter(c);assert.equal(stored.moderationStatus,'pending');assert.equal(store.isWorkPublic(stored),false);await assert.rejects(store.reviewPublication(w.id,stored.moderationRevision,'approved'),/администратор/);
+ store.logout();assert.equal(store.canReadWork(stored),false);await founder(store);await assert.rejects(store.reviewPublication(w.id,stored.moderationRevision,'rejected'),/причину/);await store.reviewPublication(w.id,stored.moderationRevision,'rejected','Change the ending');assert.equal(stored.moderationNote,'Change the ending');
+ await store.login({login:'writer',password:'password'});await store.upsertWork({...stored,title:'Revised'});assert.equal(stored.moderationStatus,'draft');await store.submitForReview(w.id);const oldRevision=stored.moderationRevision;await store.upsertChapter({...c,body:'Revised text'});
+ await founder(store);await assert.rejects(store.reviewPublication(w.id,oldRevision,'approved'),/изменился/);await store.reviewPublication(w.id,stored.moderationRevision,'approved');assert.equal(store.isWorkPublic(stored),true);
+ await store.login({login:'writer',password:'password'});await store.upsertChapter({...c,body:'Unreviewed edit'});assert.equal(store.isWorkPublic(stored),false);assert.equal(stored.moderationStatus,'pending');
+});
+test('admin-owned publications bypass the queue but private chapter drafts remain drafts',async()=>{
+ const {store}=harness();await store.init();await founder(store);const w={...clone(store.state.works[0]),id:store.uid(),legacyUrl:null};await store.upsertWork(w);const c={id:store.uid(),workId:w.id,title:'Chapter',body:'Text',order:1,status:'published'};await store.upsertChapter(c);const own=store.state.works.find(x=>x.id===w.id);assert.equal(store.isWorkPublic(own),true);await store.upsertChapter({...c,id:store.uid(),status:'draft'});assert.equal(own.moderationStatus,'approved');
+});
+test('cloud publication writes fail closed until database moderation is installed',async()=>{
+ const {store}=harness({remote:async()=>({ok:true,text:async()=>JSON.stringify([])})});await store.init();store.state.authors.push({id:'writer',username:'writer'});store.setSession({authorId:'writer',token:'fake'});await assert.rejects(store.upsertWork({id:store.uid(),authorId:'writer',title:'Not safe yet'}),/миграцию/);assert.equal(store.state.works.some(w=>w.title==='Not safe yet'),false);
+});
+test('cloud moderation uses atomic snapshot and expected revision; failed decisions are not applied or cached publicly',async()=>{
+ const row={id:'story',author_id:'writer',title:'Snapshot story',moderation_status:'pending',moderation_revision:4,moderation_note:''};let fail=true,decision;
+ const remote=async(url,opts={})=>{const p=new URL(url).pathname;let data=[];
+  if(p.endsWith('/moderation_version'))data=1;
+  if(p.endsWith('/publication_snapshot'))data={works:[row],chapters:[{id:'chapter',work_id:'story',title:'Chapter',body:'Reviewed snapshot',status:'published',sort_order:1}]};
+  if(p.endsWith('/profiles'))data=[{id:'admin',username:'owner',role:'admin'},{id:'writer',username:'writer',role:'author'}];
+  if(p.endsWith('/review_publication')){decision=JSON.parse(opts.body);if(fail)return {ok:false,status:400,text:async()=>JSON.stringify({message:'Автор изменил текст. Обновите заявку'})};data={...row,moderation_status:'approved',moderation_revision:5};}
+  return {ok:true,text:async()=>JSON.stringify(data)};
+ };
+ const {store,storage}=harness({remote,storage:new Map([['chernila_session_v2',JSON.stringify({authorId:'admin',token:'fake'})]])});await store.init();assert.equal(store.state.chapters.find(c=>c.id==='chapter').body,'Reviewed snapshot');assert.equal(store.state.works.find(w=>w.id==='story').moderationRevision,4);assert.ok(!storage.get('chernila_db_v2').includes('Reviewed snapshot'));
+ await assert.rejects(store.reviewPublication('story',4,'approved'),/изменил текст/);assert.equal(store.state.works.find(w=>w.id==='story').moderationStatus,'pending');assert.equal(decision.p_revision,4);fail=false;await store.reviewPublication('story',4,'approved');assert.equal(store.state.works.find(w=>w.id==='story').moderationStatus,'approved');
 });

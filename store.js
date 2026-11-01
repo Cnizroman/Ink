@@ -96,7 +96,7 @@ async function probeSupabase(){
 }
 /* Маппинг строк Supabase -> внутренняя модель */
 function mapProfile(r){return {id:r.id,username:r.username,displayName:r.display_name||r.username,bio:r.bio||'',motto:r.motto||'',location:r.location||'',hue:r.avatar_hue??38,role:r.role||'author',founder:!!r.is_founder,joinedAt:(r.created_at||'').slice(0,10),badges:r.badges||[],customization:(()=>{try{return cleanCustomization(r.customization||{})}catch(_){return cleanCustomization()}})()}}
-function mapWork(r){return {id:r.id,authorId:r.author_id,title:r.title,subtitle:r.subtitle||'',type:r.type,genre:r.genre,tags:r.tags||[],description:r.description||'',status:r.status,ageRating:r.age_rating||'12+',legacyUrl:safeLegacyUrl(r.id,r.legacy_url),featured:!!r.featured,views:r.views||0,cover:r.cover||{from:'#222',to:'#c8a96e',symbol:'✦'},createdAt:(r.created_at||'').slice(0,10),updatedAt:(r.updated_at||'').slice(0,10)}}
+function mapWork(r){return {id:r.id,authorId:r.author_id,title:r.title,subtitle:r.subtitle||'',type:r.type,genre:r.genre,tags:r.tags||[],description:r.description||'',status:r.status,ageRating:r.age_rating||'12+',legacyUrl:safeLegacyUrl(r.id,r.legacy_url),featured:!!r.featured,moderationStatus:r.moderation_status||'draft',moderationNote:r.moderation_note||'',moderationRevision:Number(r.moderation_revision)||1,submittedAt:r.submitted_at||null,views:r.views||0,cover:r.cover||{from:'#222',to:'#c8a96e',symbol:'✦'},createdAt:(r.created_at||'').slice(0,10),updatedAt:(r.updated_at||'').slice(0,10)}}
 function mapChapter(r){return {id:r.id,workId:r.work_id,title:r.title,body:r.body||'',order:r.sort_order||1,status:r.status||'published',createdAt:(r.created_at||'').slice(0,10)}}
 
 
@@ -132,7 +132,7 @@ function adoptFounderIdentity(state, real){
 
 const Store={
   mode:'local', // 'supabase' | 'local'
-  state:null, session:null,
+  state:null, session:null,moderationReady:false,
   uid, today,
   cleanCustomization(c){return cleanCustomization(c,this.mode==='local');},
 
@@ -144,17 +144,21 @@ const Store={
     const ok=await probeSupabase();
     if(ok){
       this.mode='supabase';
+      try{this.moderationReady=(await sbFetch('/rest/v1/rpc/moderation_version',{method:'POST',body:'{}'}))===1;}catch(_){this.moderationReady=false;}
       if(this.session&&!this.session.token)this.setSession(null);
       await this.completeSocialReturn();
       try{ await this.pullFromSupabase(); }catch(e){ console.warn('Supabase pull failed, using cache',e); }
     }
     return this;
   },
-  async pullFromSupabase(){
+  async pullFromSupabase({strict=false}={}){
+    this.publicationReadError=false;
+    const publications=this.moderationReady?sbFetch('/rest/v1/rpc/publication_snapshot',{method:'POST',body:'{}'}).then(data=>{if(!Array.isArray(data?.works)||!Array.isArray(data?.chapters))throw new Error('Не удалось получить согласованную версию произведений и глав.');return data;}):null;
+    const readFailure=e=>{this.publicationReadError=true;if(strict)throw e;return [];};
     const [profiles,works,chapters,comments,reviews,likes,follows,shelves,contests,entries,groups,founderSettings]=await Promise.all([
       sbFetch('/rest/v1/profiles?select=*&order=created_at.asc').catch(()=>[]),
-      sbFetch('/rest/v1/works?select=*&order=updated_at.desc').catch(()=>[]),
-      sbFetch('/rest/v1/chapters?select=*&order=sort_order.asc').catch(()=>[]),
+      (publications?publications.then(data=>data.works):sbFetch('/rest/v1/works?select=*&order=updated_at.desc')).catch(readFailure),
+      (publications?publications.then(data=>data.chapters):sbFetch('/rest/v1/chapters?select=*&order=sort_order.asc')).catch(readFailure),
       sbFetch('/rest/v1/comments?select=*&order=created_at.desc').catch(()=>[]),
       sbFetch('/rest/v1/work_reviews?select=*&order=created_at.desc').catch(()=>[]),
       sbFetch('/rest/v1/likes?select=*').catch(()=>[]),
@@ -187,10 +191,10 @@ const Store={
           if(!groups.some(x=>x.id===g.id)) this.state.groups.push({...clone(g),authorId:founder.id});
       }
       ensureGroups(this.state);
-      saveLocal(this.state);
+      this.save();
     }
   },
-  save(){ saveLocal(this.state); },
+  save(){if(this.mode==='supabase'){const works=this.state.works.filter(w=>this.isWorkPublic(w));saveLocal({...this.state,works,chapters:this.state.chapters.filter(c=>c.status==='published'&&works.some(w=>w.id===c.workId))});}else saveLocal(this.state); },
   /* фоновая отправка в Supabase (не ломает UI при ошибке) */
   push(promise){ if(this.mode==='supabase'){ Promise.resolve(promise).catch(e=>console.warn('Supabase write:',e.message)); } else { Promise.resolve(promise).catch(()=>{}); } },
 
@@ -276,7 +280,7 @@ const Store={
     this.setSession({authorId:acc.authorId,email:acc.email});
     return this.currentUser();
   },
-  logout(){ this.setSession(null); },
+  logout(){ this.setSession(null);if(this.mode==='supabase'){this.state.works=this.state.works.filter(w=>this.isWorkPublic(w));this.state.chapters=this.state.chapters.filter(c=>c.status==='published'&&this.state.works.some(w=>w.id===c.workId));this.save();} },
   async uploadProfileImage(blob,slot){
     const me=this.currentUser();if(!me)throw new Error('Войдите в аккаунт.');
     if(!['avatarUrl','bannerUrl'].includes(slot)||!blob||!['image/png','image/jpeg','image/webp'].includes(blob.type)||!blob.size||blob.size>1024*1024)throw new Error('Недопустимое изображение.');
@@ -389,18 +393,40 @@ const Store={
     const user=this.currentUser(),w=this.state.works.find(w=>w.id===id);
     if(!user||!w||w.authorId!==user.id)throw new Error('Это произведение принадлежит другому автору.');return w;
   },
+  isWorkPublic(w){return !!w&&(!!w.legacyUrl||w.moderationStatus==='approved');},
+  canReadWork(w){const u=this.currentUser();return !!w&&(this.isWorkPublic(w)||!!u&&(u.id===w.authorId||u.role==='admin'));},
+  requireModeration(){if(this.mode==='supabase'&&!this.moderationReady)throw new Error('Премодерация ещё не включена в базе. Владелец должен применить SQL-миграцию ручной проверки. Публикация заблокирована.');},
+  async submitForReview(id){
+    const w=this.assertOwnWork(id);this.requireModeration();
+    if(!this.state.chapters.some(c=>c.workId===id&&c.status==='published'&&c.body.trim()))throw new Error('Подготовьте хотя бы одну главу к публикации.');
+    if(this.mode==='supabase'){const data=await sbFetch('/rest/v1/rpc/submit_work_for_review',{method:'POST',body:JSON.stringify({p_work_id:id,p_revision:w.moderationRevision})});Object.assign(w,mapWork(Array.isArray(data)?data[0]:data));}
+    else{w.moderationStatus=this.currentUser().role==='admin'?'approved':'pending';w.moderationNote='';w.moderationRevision=(w.moderationRevision||1)+1;w.submittedAt=new Date().toISOString();}
+    this.save();return w;
+  },
+  async reviewPublication(id,revision,decision,note=''){
+    if(this.currentUser()?.role!=='admin')throw new Error('Только администратор может проверять публикации.');this.requireModeration();
+    const w=this.state.works.find(w=>w.id===id);note=String(note).trim();
+    if(!w||w.moderationStatus!=='pending')throw new Error('Заявка больше не ожидает проверки.');
+    if(w.moderationRevision!==revision)throw new Error('Текст изменился. Обновите заявку.');
+    if(!['approved','rejected'].includes(decision)||note.length>2000||decision==='rejected'&&!note)throw new Error('Укажите причину возврата (до 2000 символов).');
+    if(decision==='approved'&&!this.state.chapters.some(c=>c.workId===id&&c.status==='published'&&c.body.trim()))throw new Error('Нет глав для публикации.');
+    if(this.mode==='supabase'){const data=await sbFetch('/rest/v1/rpc/review_publication',{method:'POST',body:JSON.stringify({p_work_id:id,p_revision:revision,p_decision:decision,p_note:note})});Object.assign(w,mapWork(Array.isArray(data)?data[0]:data));}
+    else{w.moderationStatus=decision;w.moderationNote=note;w.moderationRevision++;}
+    this.save();return w;
+  },
   /* ---------- Произведения и главы ---------- */
   async upsertWork(w){
     const ex=this.state.works.find(x=>x.id===w.id);
     const user=this.currentUser();
     if(!user||w.authorId!==user.id||(ex&&ex.authorId!==user.id))throw new Error('Можно редактировать только свои произведения.');
     if(!String(w.title||'').trim())throw new Error('Укажите название.');
-    w={...w,legacyUrl:safeLegacyUrl(w.id,w.legacyUrl),featured:user.role==='admin'?!!w.featured:!!ex?.featured,updatedAt:today()};
+    if(!w.legacyUrl)this.requireModeration();
+    w={...w,moderationStatus:user.role==='admin'?'approved':'draft',moderationNote:'',moderationRevision:(ex?.moderationRevision||0)+1,legacyUrl:safeLegacyUrl(w.id,w.legacyUrl),featured:user.role==='admin'?!!w.featured:!!ex?.featured,updatedAt:today()};
     const row={id:/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(w.id)?w.id:undefined,author_id:w.authorId,title:w.title,subtitle:w.subtitle,type:w.type,genre:w.genre,tags:w.tags,description:w.description,status:w.status,age_rating:w.ageRating,legacy_url:w.legacyUrl,featured:w.featured,cover:w.cover};
     if(this.mode==='supabase'){
+      let saved;
       if(w.legacyUrl) await sbFetch('/rest/v1/founder_work_settings?on_conflict=work_id',{method:'POST',headers:sbHeaders({'Prefer':'resolution=merge-duplicates,return=representation'}),body:JSON.stringify({work_id:w.id,author_id:user.id,settings:row})});
-      else if(ex)await sbFetch('/rest/v1/works?id=eq.'+w.id,{method:'PATCH',body:JSON.stringify(row)});
-      else await sbFetch('/rest/v1/works',{method:'POST',body:JSON.stringify(row)});
+      else{saved=ex?await sbFetch('/rest/v1/works?id=eq.'+w.id,{method:'PATCH',body:JSON.stringify(row)}):await sbFetch('/rest/v1/works',{method:'POST',body:JSON.stringify(row)});if(!saved?.[0])throw new Error('Сервер не подтвердил сохранение произведения.');w=mapWork(saved[0]);}
     }
     if(ex)Object.assign(ex,w);else this.state.works.unshift(w);this.save();return w;
   },
@@ -415,18 +441,19 @@ const Store={
     this.save();
   },
   async upsertChapter(c){
-    const owner=this.assertOwnWork(c.workId);
+    const owner=this.assertOwnWork(c.workId);this.requireModeration();
     if(owner.legacyUrl)throw new Error('Это исходный авторский текст. Его главы редактируются в HTML-файле проекта.');
     const ex=this.state.chapters.find(x=>x.id===c.id);
     if(ex&&ex.workId!==c.workId)throw new Error('Нельзя перенести чужую главу.');
     if(!String(c.title||'').trim()||c.title.length>160||!String(c.body||'').trim()||c.body.length>400000||!['draft','published'].includes(c.status))throw new Error('Проверьте заголовок, текст и статус главы.');
     const w=this.state.works.find(x=>x.id===c.workId);
     const row={id:/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(c.id)?c.id:undefined,work_id:c.workId,title:c.title,body:c.body,sort_order:c.order,status:c.status};
-    if(this.mode==='supabase'){if(ex)await sbFetch('/rest/v1/chapters?id=eq.'+c.id,{method:'PATCH',body:JSON.stringify(row)});else await sbFetch('/rest/v1/chapters',{method:'POST',body:JSON.stringify(row)});}
+    if(this.mode==='supabase'){const saved=ex?await sbFetch('/rest/v1/chapters?id=eq.'+c.id,{method:'PATCH',body:JSON.stringify(row)}):await sbFetch('/rest/v1/chapters',{method:'POST',body:JSON.stringify(row)});if(!saved?.[0])throw new Error('Сервер не подтвердил сохранение главы.');c=mapChapter(saved[0]);const parents=await sbFetch('/rest/v1/works?id=eq.'+c.workId+'&select=*');if(!parents?.[0])throw new Error('Глава сохранена, но статус проверки не получен. Обновите страницу.');Object.assign(w,mapWork(parents[0]));}
+    else if(w){w.moderationRevision=(w.moderationRevision||1)+1;if(this.currentUser().role==='admin'){w.moderationStatus='approved';}else if(c.status==='published'||ex?.status==='published'){w.moderationStatus=c.status==='published'?'pending':'draft';w.moderationNote='';w.submittedAt=c.status==='published'?new Date().toISOString():null;}}
     if(w)w.updatedAt=today();if(ex)Object.assign(ex,c);else this.state.chapters.push(c);this.save();return c;
   },
-  async deleteChapter(id){ const c=this.state.chapters.find(x=>x.id===id);if(!c)throw new Error('Глава не найдена.');this.assertOwnWork(c.workId);if(this.mode==='supabase')await sbFetch('/rest/v1/chapters?id=eq.'+id,{method:'DELETE'});this.state.chapters=this.state.chapters.filter(c=>c.id!==id); this.save(); },
-  addView(workId){ const w=this.state.works.find(x=>x.id===workId); if(w){w.views=(w.views||0)+1; this.save(); this.push(sbFetch('/rest/v1/rpc/increment_work_views',{method:'POST',body:JSON.stringify({p_work_id:workId})}));} },
+  async deleteChapter(id){ this.requireModeration();const c=this.state.chapters.find(x=>x.id===id);if(!c)throw new Error('Глава не найдена.');this.assertOwnWork(c.workId);if(this.mode==='supabase')await sbFetch('/rest/v1/chapters?id=eq.'+id,{method:'DELETE'});this.state.chapters=this.state.chapters.filter(c=>c.id!==id);const w=this.state.works.find(w=>w.id===c.workId);if(this.mode==='supabase'){const rows=await sbFetch('/rest/v1/works?id=eq.'+c.workId+'&select=*');if(rows?.[0])Object.assign(w,mapWork(rows[0]));}else if(w){w.moderationRevision=(w.moderationRevision||1)+1;if(c.status==='published'&&this.currentUser().role!=='admin')w.moderationStatus='draft';}this.save(); },
+  addView(workId){ const w=this.state.works.find(x=>x.id===workId); if(w&&this.isWorkPublic(w)){w.views=(w.views||0)+1; this.save(); this.push(sbFetch('/rest/v1/rpc/increment_work_views',{method:'POST',body:JSON.stringify({p_work_id:workId})}));} },
 
   /* ---------- Циклы / группы (порядок хранится в workIds) ---------- */
   async upsertGroup(g){

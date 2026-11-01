@@ -11,6 +11,7 @@
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TYPE_LABEL={}; (window.CHERNILA_SEED?.types||[]).forEach(t=>TYPE_LABEL[t.id]=t.label);
+const REVIEW_LABEL={draft:'Черновик',pending:'На проверке',approved:'Опубликовано',rejected:'На доработку'};
 const STATUS_LABEL={completed:'Завершено',ongoing:'В процессе',frozen:'Заморожено'};
 const GROUP_KINDS={cycle:'Цикл',dilogy:'Дилогия',trilogy:'Трилогия',tetralogy:'Тетралогия',series:'Серия'};
 const SHELVES={want:'Хочу прочитать',reading:'Читаю',done:'Прочитано',fav:'Избранное'};
@@ -22,7 +23,8 @@ let S=null; // Store.state
 
 /* ---------- производные данные ---------- */
 const author=id=>S.authors.find(a=>a.id===id)||{displayName:'Неизвестный автор',username:'?',hue:40};
-const work=id=>S.works.find(w=>w.id===id);
+const publicWorks=()=>S.works.filter(w=>Store.isWorkPublic(w));
+const work=id=>S.works.find(w=>w.id===id&&Store.canReadWork(w));
 const chaptersOf=(wid,all)=>S.chapters.filter(c=>c.workId===wid&&(all||c.status==='published')).sort((a,b)=>a.order-b.order);
 const likesOf=wid=>S.likes.filter(l=>l.workId===wid).length;
 const followersOf=aid=>S.follows.filter(f=>f.authorId===aid).length;
@@ -32,7 +34,7 @@ const reviewTotal=r=>CRITERIA.reduce((s,c)=>s+(+r.scores[c.id]||0),0);
 function rating(wid){const rs=reviewsOf(wid); if(!rs.length) return null; const avg=rs.reduce((s,r)=>s+reviewTotal(r),0)/rs.length; return {total:avg, outOf10:(avg/21*10), count:rs.length,
   by:Object.fromEntries(CRITERIA.map(c=>[c.id, rs.reduce((s,r)=>s+(+r.scores[c.id]||0),0)/rs.length]))};}
 const words=t=>(t||'').trim().split(/\s+/).filter(Boolean).length;
-const workWords=w=>chaptersOf(w.id,true).reduce((s,c)=>s+words(c.body),0);
+const workWords=w=>chaptersOf(w.id).reduce((s,c)=>s+words(c.body),0);
 const fmt=n=>n>=1000?(n/1000).toFixed(1).replace('.0','')+' тыс.':String(n);
 const readTime=w=>Math.max(1,Math.round(workWords(w)/180));
 const me=()=>Store.currentUser();
@@ -48,8 +50,8 @@ const ava=(a,cls='')=>a.customization?.avatarUrl?`<span class="avatar ${cls}"><i
 function coverHTML(w){const a=author(w.authorId);return `<div class="cover" style="background:linear-gradient(150deg,${esc(w.cover?.from||'#222')},${esc(w.cover?.to||'#c8a96e')})">
   <span class="cov-type">${w.legacyUrl?'':esc(TYPE_LABEL[w.type]||w.type)+' · '}${esc(w.genre)}</span><span class="cov-symbol">${esc(w.cover?.symbol||'✦')}</span>
   <span><span class="cov-title">${esc(w.title)}</span><span class="cov-author" style="display:block">${esc(a.displayName)}</span></span></div>`}
-const groupWorks=g=>(g.workIds||[]).map(work).filter(w=>w&&w.authorId===g.authorId);
-const groupsOf=wid=>(S.groups||[]).filter(g=>g.workIds.includes(wid)&&groupWorks(g).some(w=>w.id===wid));
+const groupWorks=(g,all=false)=>(g.workIds||[]).map(work).filter(w=>w&&w.authorId===g.authorId&&(all||Store.isWorkPublic(w)));
+const groupsOf=wid=>(S.groups||[]).filter(g=>g.workIds.includes(wid)&&groupWorks(g,true).some(w=>w.id===wid));
 function groupCard(g,matches=[]){const ws=groupWorks(g);return `<article class="panel group-card"><span class="pill gold">${esc(GROUP_KINDS[g.kind]||'Цикл')}</span>
   <h3><a href="#/group/${encodeURIComponent(g.id)}">${esc(g.title)}</a></h3><p class="muted">${esc(g.description)}</p>
   <div class="small muted">${esc(author(g.authorId).displayName)} · Произведений: ${groupWorks(g).length}</div>
@@ -66,7 +68,7 @@ function shelfEntries(list){
 function workTiles(list){return shelfEntries(list).map(e=>e.group?groupCard(e.group,e.matches):workCard(e.work)).join('');}
 function pageGroup(id){
   const g=S.groups.find(x=>x.id===id); if(!g) return page404(); setNav('catalog');
-  const ws=groupWorks(g);
+  const ws=groupWorks(g);if(!ws.length&&me()?.id!==g.authorId&&me()?.role!=='admin')return page404();
   $('#app').innerHTML=`<div class="wrap group-page"><a class="more" href="#/catalog">← Каталог</a>
     <div class="kicker">${esc(GROUP_KINDS[g.kind])} · Произведений: ${ws.length}</div><h1>${esc(g.title)}</h1>
     <p class="muted">${esc(g.description)}</p><p>Автор: <a class="more" href="#/author/${g.authorId}">${esc(author(g.authorId).displayName)}</a></p>
@@ -83,7 +85,7 @@ function workCard(w){const r=rating(w.id),a=author(w.authorId),prog=Store.progre
   ${prog?`<div class="progress-line" title="Прочитано ${Math.round(prog.pct)}%"><i style="width:${prog.pct}%"></i></div>`:''}
   <div class="work-meta"><span class="rate">${r?('★ '+r.outOf10.toFixed(1)+' · '+r.count+' рец.'):'☆ пока без рецензий'}</span><span>👁 ${fmt(w.views||0)}</span><span>♥ ${likesOf(w.id)}</span>${w.legacyUrl?'<span>Полный текст ↗</span>':`<span>${chaptersOf(w.id).length} гл.</span><span>~${readTime(w)} мин</span>`}</div>
   </div></article>`}
-function authorCard(a){const ws=S.works.filter(w=>w.authorId===a.id);const likes=ws.reduce((s,w)=>s+likesOf(w.id),0);
+function authorCard(a){const ws=publicWorks().filter(w=>w.authorId===a.id);const likes=ws.reduce((s,w)=>s+likesOf(w.id),0);
   return `<article class="author-card reveal">${ava(a,'lg')}<div style="flex:1"><h3><a href="#/author/${a.id}">${esc(a.displayName)}</a></h3>
   <div class="small muted">@${esc(a.username)}${a.founder?' · <span style="color:var(--gold)">основатель платформы</span>':''}${a.location&&a.customization?.showLocation!==false?' · '+esc(a.location):''}</div>
   <p>${esc(a.bio||'Автор пока ничего о себе не рассказал.')}</p>
@@ -101,12 +103,12 @@ function renderUserChip(){const u=me();InkTheme.activate(u?.id); $('#userChip').
 /* ================= СТРАНИЦЫ ================= */
 function pageHome(){
   setNav('home');
-  const featured=S.works.filter(w=>w.featured), fresh=[...S.works].sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||'')).slice(0,8);
-  const top=[...S.works].map(w=>({w,r:rating(w.id)})).filter(x=>x.r).sort((a,b)=>b.r.outOf10-a.r.outOf10).slice(0,5);
+  const featured=publicWorks().filter(w=>w.featured), fresh=[...publicWorks()].sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||'')).slice(0,8);
+  const top=[...publicWorks()].map(w=>({w,r:rating(w.id)})).filter(x=>x.r).sort((a,b)=>b.r.outOf10-a.r.outOf10).slice(0,5);
   const topAuthors=[...S.authors].sort((a,b)=>followersOf(b.id)-followersOf(a.id)).slice(0,6);
-  const totalViews=S.works.reduce((s,w)=>s+(w.views||0),0);
+  const totalViews=publicWorks().reduce((s,w)=>s+(w.views||0),0);
   const quotes=['Никого не вспомнят. Пока он не напишет','Читайте медленно. Пишите честно','Каждая история заслуживает своего читателя'].join(' &nbsp;✦&nbsp; ');
-  const cont=Store.progress.get(); const contWorks=Object.keys(cont).map(work).filter(Boolean).slice(0,4);
+  const cont=Store.progress.get(); const contWorks=Object.keys(cont).map(work).filter(w=>Store.isWorkPublic(w)).slice(0,4);
   $('#app').innerHTML=`
   <div class="wrap">
     <header class="hero reveal"><div class="kicker">Платформа для авторов · рассказы · романы · стихотворения</div>
@@ -114,9 +116,9 @@ function pageHome(){
       <p class="hero-lead">«Чернила» — место, где истории находят читателей, а авторы — друг друга. Публикуйте рассказы, романы, повести, стихи и эссе. Получайте честные рецензии по пяти критериям. Читайте медленно.</p>
       <div class="hero-actions"><a class="btn" href="#/catalog">Начать читать →</a><a class="btn ghost" href="#/studio/new">✒ Опубликовать своё</a></div>
       <div class="hero-stats">
-        <div class="hstat"><b>${S.works.length}</b><span>произведений</span></div>
+        <div class="hstat"><b>${publicWorks().length}</b><span>произведений</span></div>
         <div class="hstat"><b>${S.authors.length}</b><span>авторов</span></div>
-        <div class="hstat"><b>${S.chapters.filter(c=>c.status==='published').length}</b><span>глав и текстов</span></div>
+        <div class="hstat"><b>${S.chapters.filter(c=>c.status==='published'&&Store.isWorkPublic(work(c.workId))).length}</b><span>глав и текстов</span></div>
         <div class="hstat"><b>${fmt(totalViews)}</b><span>просмотров книг</span></div>
         <div class="hstat"><b>${S.reviews.length}</b><span>рецензий</span></div>
       </div></header>
@@ -131,7 +133,7 @@ function pageHome(){
         ${top.map((x,i)=>`<a class="rank" href="#/work/${x.w.id}"><span class="n">${i+1}</span>${ava(author(x.w.authorId))}<span style="flex:1"><b style="font-family:var(--serif)">${esc(x.w.title)}</b><br><span class="small muted">${esc(author(x.w.authorId).displayName)} · ${esc(x.w.genre)}</span></span><span class="rate">★ ${x.r.outOf10.toFixed(1)}</span></a>`).join('')||'<div class="empty">Рецензий пока нет</div>'}
         <p class="small muted">Рейтинг считается по фирменной системе «Чернил»: сюжет — до 5 баллов, персонажи, атмосфера, язык и эмоции — до 4. Максимум — 21 балл честной оценки.</p></div>
       <div><div class="sec-head"><div><div class="kicker">Жанры</div><h2>Куда нырнуть?</h2></div></div>
-        <div class="grid" style="grid-template-columns:1fr 1fr">${window.CHERNILA_SEED.genres.slice(0,8).map(g=>{const n=S.works.filter(w=>w.genre===g).length;return `<a class="genre-tile" href="#/catalog?genre=${encodeURIComponent(g)}"><h3>${esc(g)}</h3><span class="muted small">${n?n+' произведений':'станьте первым автором здесь ✒'}</span></a>`}).join('')}</div></div>
+        <div class="grid" style="grid-template-columns:1fr 1fr">${window.CHERNILA_SEED.genres.slice(0,8).map(g=>{const n=publicWorks().filter(w=>w.genre===g).length;return `<a class="genre-tile" href="#/catalog?genre=${encodeURIComponent(g)}"><h3>${esc(g)}</h3><span class="muted small">${n?n+' произведений':'станьте первым автором здесь ✒'}</span></a>`}).join('')}</div></div>
     </div></section>
     <section class="block"><div class="sec-head"><div><div class="kicker">Обновления</div><h2>Свежее из-под пера</h2></div><a class="more" href="#/feed">Лента обновлений →</a></div>
       <div class="grid works">${workTiles(fresh)}</div></section>
@@ -149,7 +151,7 @@ function pageCatalog(params){
   const link=patch=>{const p=new URLSearchParams(params);Object.entries(patch).forEach(([k,v])=>v?p.set(k,v):p.delete(k));return '#/catalog?'+p;};
   $('#app').innerHTML=`<div class="wrap"><div class="catalog-layout"><aside class="filters panel">
     <form id="catSearch" class="stack" role="search"><label class="field">Поиск по названию<input type="search" class="input" name="q" value="${esc(params.get('q')||'')}" placeholder="Начните вводить название…" autocomplete="off" aria-controls="catalogResults"></label><label class="field">Где искать<select name="scope"><option value="title">Только в названии</option><option value="all">Название, автор, теги, аннотация</option></select></label><span class="small muted">Результаты обновляются, пока вы печатаете.</span></form>
-    <label class="field">Категория / жанр<select id="catGenre"><option value="">Все жанры</option>${[...new Set([...window.CHERNILA_SEED.genres,...S.works.map(w=>w.genre)])].map(g=>`<option value="${esc(g)}">${esc(g)} (${S.works.filter(w=>w.genre===g).length})</option>`).join('')}</select></label>
+    <label class="field">Категория / жанр<select id="catGenre"><option value="">Все жанры</option>${[...new Set([...window.CHERNILA_SEED.genres,...publicWorks().map(w=>w.genre)])].map(g=>`<option value="${esc(g)}">${esc(g)} (${publicWorks().filter(w=>w.genre===g).length})</option>`).join('')}</select></label>
     <label class="field">Тип<select id="catType"><option value="">Любой</option>${window.CHERNILA_SEED.types.map(t=>`<option value="${t.id}">${t.label}</option>`).join('')}</select></label>
     <label class="field">Статус<select id="catStatus"><option value="">Любой</option>${Object.entries(STATUS_LABEL).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></label>
     <label class="field">Сортировка<select id="catSort">${[['new','Сначала обновлённые'],['popular','По просмотрам'],['rating','По рейтингу'],['likes','По лайкам'],['az','По алфавиту']].map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></label><a class="btn ghost sm" href="#/catalog">Сбросить фильтры</a></aside>
@@ -158,7 +160,7 @@ function pageCatalog(params){
   Object.entries(controls).forEach(([k,el])=>{el.value=params.get(k)||(k==='sort'?'new':k==='scope'?'title':'');});
   const update=()=>{
     const values=Object.fromEntries(Object.entries(controls).map(([k,el])=>[k,el.value])),q=norm(values.q);
-    const list=S.works.filter(w=>(!values.genre||w.genre===values.genre)&&(!values.type||w.type===values.type)&&(!values.status||w.status===values.status)&&(!q||norm(values.scope==='all'?w.title+' '+w.description+' '+author(w.authorId).displayName+' '+(w.tags||[]).join(' '):w.title).includes(q)||groupsOf(w.id).some(g=>norm(g.title).includes(q))));
+    const list=publicWorks().filter(w=>(!values.genre||w.genre===values.genre)&&(!values.type||w.type===values.type)&&(!values.status||w.status===values.status)&&(!q||norm(values.scope==='all'?w.title+' '+w.description+' '+author(w.authorId).displayName+' '+(w.tags||[]).join(' '):w.title).includes(q)||groupsOf(w.id).some(g=>norm(g.title).includes(q))));
     const sorts={new:(a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''),popular:(a,b)=>(b.views||0)-(a.views||0),rating:(a,b)=>(rating(b.id)?.outOf10||0)-(rating(a.id)?.outOf10||0),likes:(a,b)=>likesOf(b.id)-likesOf(a.id),az:(a,b)=>a.title.localeCompare(b.title,'ru')};list.sort(sorts[values.sort]||sorts.new);
     const n=shelfEntries(list).length;$('#catalogCount').textContent=`Найдено: ${n} ${n===1?'карточка':'карточек'} · произведений: ${list.length}. Книги одного цикла собраны вместе.`;
     $('#catalogResults').innerHTML=list.length?workTiles(list):'<div class="empty">Ничего не найдено. Измените название или фильтры.</div>';
@@ -172,10 +174,10 @@ function pageWork(id){
   const w=work(id); if(!w) return page404();
   setNav('catalog'); Store.addView(id);
   const a=author(w.authorId), chs=chaptersOf(id), r=rating(id), revs=reviewsOf(id), u=me(), shelf=myShelf(id);
-  const similar=S.works.filter(x=>x.id!==id&&(x.genre===w.genre||x.type===w.type)).slice(0,4);
+  const similar=publicWorks().filter(x=>x.id!==id&&(x.genre===w.genre||x.type===w.type)).slice(0,4);
   const myReview=u&&revs.find(x=>x.userId===u.id);
   $('#app').innerHTML=`<div class="wrap">
-    <div class="work-hero reveal"><div>${coverHTML(w)}</div>
+    ${!Store.isWorkPublic(w)?'<p class="moderation-warning">Предпросмотр: произведение не опубликовано. Его видят только автор и администратор.</p>':''}<div class="work-hero reveal"><div>${coverHTML(w)}</div>
     <div><div class="chiprow">${w.legacyUrl?'':`<span class="pill gold">${esc(TYPE_LABEL[w.type]||w.type)}</span>`}<span class="pill">${esc(w.genre)}</span><span class="pill">${esc(STATUS_LABEL[w.status]||w.status)}</span><span class="pill">${esc(w.ageRating)}</span>${w.featured?'<span class="pill gold">✦ Выбор платформы</span>':''}</div>
     <h1 style="margin-top:16px">${esc(w.title)}</h1>${w.subtitle?`<p style="font-family:var(--body);font-style:italic;font-size:1.25rem;color:var(--gold2)">${esc(w.subtitle)}</p>`:''}
     <div class="author-line">${ava(a,'md')}<div><a href="#/author/${a.id}" style="font-family:var(--serif);font-size:1.2rem"><b>${esc(a.displayName)}</b></a><div class="small muted">@${esc(a.username)} · ${followersOf(a.id)} подписчиков</div></div>
@@ -235,7 +237,7 @@ function pageRead(wid,cid){
   const c=chs[idx], a=author(w.authorId), prev=chs[idx-1], next=chs[idx+1];
   setNav('catalog');
   $('#app').innerHTML=`
-  <div class="reader-top"><div class="wrap"><a class="btn ghost sm" href="#/work/${wid}">← К произведению</a>
+  ${!Store.isWorkPublic(w)?'<div class="wrap moderation-warning">Предпросмотр неопубликованного текста — доступен только автору и администратору.</div>':''}<div class="reader-top"><div class="wrap"><a class="btn ghost sm" href="#/work/${wid}">← К произведению</a>
     <span style="font-family:var(--serif)"><b>${esc(w.title)}</b> <span class="muted">· ${esc(a.displayName)}</span></span>
     <span style="margin-left:auto;display:flex;gap:7px;flex-wrap:wrap">
       <button class="chipbtn" data-action="font" data-v="-1">A−</button><button class="chipbtn" data-action="font" data-v="1">A+</button>
@@ -266,7 +268,7 @@ function pageAuthor(id){
   const a=S.authors.find(x=>x.id===id||x.username===id); if(!a) return page404();
   id=a.id;
   const custom=Store.cleanCustomization(a.customization||{});
-  setNav('authors'); const ws=S.works.filter(w=>w.authorId===id); const u=me();
+  setNav('authors'); const ws=publicWorks().filter(w=>w.authorId===id); const u=me();
   const totalViews=ws.reduce((s,w)=>s+(w.views||0),0), totalLikes=ws.reduce((s,w)=>s+likesOf(w.id),0);
   const revs=S.reviews.filter(r=>ws.some(w=>w.id===r.workId));
   $('#app').innerHTML=`<div class="wrap public-profile" style="${profileStyle(a)}">${profilePreview(a)}<header style="padding:24px 0 10px" class="reveal">
@@ -296,14 +298,14 @@ function pageAuthor(id){
 function pageAuthors(){
   setNav('authors'); const list=[...S.authors].sort((a,b)=>followersOf(b.id)-followersOf(a.id));
   $('#app').innerHTML=`<div class="wrap" style="padding:48px 0 0"><div class="kicker">Сообщество</div>
-  <h1 style="font-size:2.6rem;margin:12px 0">Авторы «Чернил»</h1><p class="muted">${S.authors.length} авторов · ${S.works.length} произведений · подписывайтесь, чтобы видеть новые главы в своей ленте.</p>
+  <h1 style="font-size:2.6rem;margin:12px 0">Авторы «Чернил»</h1><p class="muted">${S.authors.length} авторов · ${publicWorks().length} произведений · подписывайтесь, чтобы видеть новые главы в своей ленте.</p>
   <div class="grid authors" style="margin-top:28px">${list.map(authorCard).join('')}</div>
   <div class="panel center" style="margin-top:30px"><h2>Здесь не хватает одного автора</h2><p class="muted">Вас.</p><a class="btn" href="${me()?'#/studio/new':'#/auth?mode=signup'}">Присоединиться</a></div></div>`;
 }
 
 function pageFeed(){
   setNav('feed'); const u=me();
-  const items=S.chapters.filter(c=>c.status==='published').map(c=>({c,w:work(c.workId)})).filter(x=>x.w)
+  const items=S.chapters.filter(c=>c.status==='published'&&Store.isWorkPublic(work(c.workId))).map(c=>({c,w:work(c.workId)})).filter(x=>x.w)
     .sort((a,b)=>(b.c.createdAt||'').localeCompare(a.c.createdAt||''));
   const mine=u?items.filter(x=>isFollowing(x.w.authorId)):[]; const show=mine.length?mine:items;
   $('#app').innerHTML=`<div class="wrap" style="padding:48px 0 0;max-width:860px"><div class="kicker">Лента</div>
@@ -316,8 +318,8 @@ function pageFeed(){
 function pageLibrary(){
   setNav('library'); const u=me();
   if(!u){$('#app').innerHTML=`<div class="wrap"><div class="empty" style="margin-top:60px"><span class="big">📚</span><h2>Ваша полка ждёт вас</h2><p>Закладки, «хочу прочитать», прочитанное и избранное появятся здесь после входа.</p><a class="btn" href="#/auth">Войти</a></div></div>`;return}
-  const groups=Object.entries(SHELVES).map(([k,label])=>({k,label,ws:S.shelves.filter(s=>s.userId===u.id&&s.shelf===k).map(s=>work(s.workId)).filter(Boolean)}));
-  const prog=Store.progress.get(); const cont=Object.entries(prog).map(([wid,p])=>({w:work(wid),p})).filter(x=>x.w&&x.p.pct<100);
+  const groups=Object.entries(SHELVES).map(([k,label])=>({k,label,ws:S.shelves.filter(s=>s.userId===u.id&&s.shelf===k).map(s=>work(s.workId)).filter(w=>Store.isWorkPublic(w))}));
+  const prog=Store.progress.get(); const cont=Object.entries(prog).map(([wid,p])=>({w:work(wid),p})).filter(x=>Store.isWorkPublic(x.w)&&x.p.pct<100);
   const liked=S.likes.filter(l=>l.userId===u.id).map(l=>work(l.workId)).filter(Boolean);
   const section=(title,ws)=>ws.length?`<section class="block"><div class="sec-head"><div><h2>${title} · ${ws.length}</h2></div></div><div class="grid works">${workTiles(ws)}</div></section>`:'';
   $('#app').innerHTML=`<div class="wrap" style="padding-top:48px"><div class="kicker">Личная библиотека · ${esc(u.displayName)}</div><h1 style="font-size:2.6rem;margin:12px 0">Моя полка</h1>
@@ -351,26 +353,26 @@ function pageStudio(){
       ${revs.slice(0,4).map(r=>`<div class="comment">${ava(author(r.userId))}<div><b>${esc(r.name)}</b> <span class="rate">★ ${reviewTotal(r)}/21</span><p style="margin:4px 0 0">${esc(r.text)}</p><a class="small" style="color:var(--gold)" href="#/work/${r.workId}">«${esc(work(r.workId)?.title||'')}» →</a></div></div>`).join('')||'<p class="muted">Рецензий пока нет. Поделитесь ссылкой на произведение — первые читатели ближе, чем кажется.</p>'}</div>
     <div class="panel"><h3 style="margin-bottom:12px">Последние комментарии вам</h3>
       ${comms.slice(0,5).map(c=>`<div class="comment">${ava(author(c.userId))}<div><b>${esc(c.name)}</b> <span class="small muted">${esc(c.createdAt)}</span><p style="margin:4px 0 0">${esc(c.text)}</p></div></div>`).join('')||'<p class="muted">Комментариев пока нет.</p>'}</div></div>
-    <div class="panel" style="margin-top:20px"><h3>Быстрый старт</h3><p class="muted">Новая глава к существующему произведению поднимает его в ленте и уведомляет подписчиков.</p>
+    <div class="panel" style="margin-top:20px"><h3>Быстрый старт</h3><p class="muted">Чужие публикации проходят ручную проверку. Глава появится в ленте только после одобрения; автоматическая отправка уведомлений пока не настроена.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn" href="#/studio/new">+ Новое произведение</a><a class="btn ghost" href="#/studio/works">Мои произведения</a></div></div>
   </div></div></div>`;
 
 }
 function pageStudioWorks(){
   if(!guardStudio())return;setNav('studio');const u=me(),ws=S.works.filter(w=>w.authorId===u.id);
-  const row=w=>`<div class="studio-work-row"><div><a href="#/work/${w.id}"><b>${esc(w.title)}</b></a><p class="small muted">${esc(w.genre)} · ${esc(STATUS_LABEL[w.status])}${w.legacyUrl?' · Исходный авторский текст':` · ${chaptersOf(w.id,true).length} глав`}</p></div><a class="btn dark sm" href="#/studio/work/${w.id}">Открыть мастерскую</a></div>`;
-  $('#app').innerHTML=`<div class="wrap"><div class="studio-grid">${studioSide('works')}<div><div class="kicker">Личная мастерская · @${esc(u.username)}</div><h1>Мои произведения</h1><p class="muted">Только произведения, принадлежащие вашему аккаунту. ${ws.length} текстов · ${shelfEntries(ws).length} карточек.</p><div class="action-row"><a class="btn" href="#/studio/new">+ Произведение</a><a class="btn ghost" href="#/studio/groups">Управлять циклами</a></div><div class="stack" style="margin-top:24px">${shelfEntries(ws).map(e=>e.group?`<details class="panel studio-cycle"><summary><span class="pill gold">${esc(GROUP_KINDS[e.group.kind])}</span> <b>${esc(e.group.title)}</b> · ${groupWorks(e.group).length} текстов</summary><p class="muted">${esc(e.group.description)}</p>${groupWorks(e.group).filter(w=>w.authorId===u.id).map(row).join('')}<a class="more" href="#/studio/groups/${encodeURIComponent(e.group.id)}">Состав и порядок →</a></details>`:row(e.work)).join('')||'<div class="empty">У вас пока нет своих произведений. Создайте первое — чужие работы сюда не добавляются.</div>'}</div></div></div></div>`;
+  const row=w=>`<div class="studio-work-row"><div><a href="#/work/${w.id}"><b>${esc(w.title)}</b></a><p class="small muted">${esc(w.genre)} · ${esc(STATUS_LABEL[w.status])} · ${esc(REVIEW_LABEL[w.moderationStatus]||(w.legacyUrl?'Опубликовано':'Черновик'))}${w.legacyUrl?' · Исходный авторский текст':` · ${chaptersOf(w.id,true).length} глав`}</p></div><a class="btn dark sm" href="#/studio/work/${w.id}">Открыть мастерскую</a></div>`;
+  $('#app').innerHTML=`<div class="wrap"><div class="studio-grid">${studioSide('works')}<div><div class="kicker">Личная мастерская · @${esc(u.username)}</div><h1>Мои произведения</h1><p class="muted">Только произведения, принадлежащие вашему аккаунту. ${ws.length} текстов · ${shelfEntries(ws).length} карточек.</p><div class="action-row"><a class="btn" href="#/studio/new">+ Произведение</a><a class="btn ghost" href="#/studio/groups">Управлять циклами</a></div><div class="stack" style="margin-top:24px">${shelfEntries(ws).map(e=>e.group?`<details class="panel studio-cycle"><summary><span class="pill gold">${esc(GROUP_KINDS[e.group.kind])}</span> <b>${esc(e.group.title)}</b> · ${groupWorks(e.group,true).length} текстов</summary><p class="muted">${esc(e.group.description)}</p>${groupWorks(e.group,true).filter(w=>w.authorId===u.id).map(row).join('')}<a class="more" href="#/studio/groups/${encodeURIComponent(e.group.id)}">Состав и порядок →</a></details>`:row(e.work)).join('')||'<div class="empty">У вас пока нет своих произведений. Создайте первое — чужие работы сюда не добавляются.</div>'}</div></div></div></div>`;
 }
 function pageStudioGroups(id){
   if(!guardStudio()) return; setNav('studio');
   const mine=S.groups.filter(g=>g.authorId===me().id), g=id&&id!=='new'?mine.find(g=>g.id===id):null;
   if(id&&id!=='new'&&!g) return page404();
   const ws=S.works.filter(w=>w.authorId===me().id);
-  const ordered=g?[...groupWorks(g),...ws.filter(w=>!g.workIds.includes(w.id))]:ws;
+  const ordered=g?[...groupWorks(g,true),...ws.filter(w=>!g.workIds.includes(w.id))]:ws;
   $('#app').innerHTML=`<div class="wrap"><div class="studio-grid">${studioSide('groups')}<div>
     <div class="kicker">Студия автора</div><h1>Циклы и группы</h1>
     <p class="muted">Объединяйте свои произведения в дилогии, трилогии, тетралогии и серии. Тип группы — авторское обозначение: пролог можно включить отдельно, а незавершённый цикл — дополнять.</p>
-    ${!id?`<a class="btn" href="#/studio/groups/new">+ Создать группу</a><div class="stack" style="margin-top:24px">${mine.map(x=>`<article class="panel"><span class="pill gold">${esc(GROUP_KINDS[x.kind])}</span><h2>${esc(x.title)}</h2><p class="muted">Произведений: ${groupWorks(x).length}</p><div class="action-row"><a class="btn ghost sm" href="#/group/${encodeURIComponent(x.id)}">Открыть</a><a class="btn sm" href="#/studio/groups/${encodeURIComponent(x.id)}">Изменить состав и порядок</a><button class="btn danger sm" data-delete-group="${esc(x.id)}">Удалить группу</button></div></article>`).join('')||'<div class="empty">Групп пока нет. Создайте первую из своих произведений.</div>'}</div>`:
+    ${!id?`<a class="btn" href="#/studio/groups/new">+ Создать группу</a><div class="stack" style="margin-top:24px">${mine.map(x=>`<article class="panel"><span class="pill gold">${esc(GROUP_KINDS[x.kind])}</span><h2>${esc(x.title)}</h2><p class="muted">Произведений: ${groupWorks(x,true).length}</p><div class="action-row"><a class="btn ghost sm" href="#/group/${encodeURIComponent(x.id)}">Открыть</a><a class="btn sm" href="#/studio/groups/${encodeURIComponent(x.id)}">Изменить состав и порядок</a><button class="btn danger sm" data-delete-group="${esc(x.id)}">Удалить группу</button></div></article>`).join('')||'<div class="empty">Групп пока нет. Создайте первую из своих произведений.</div>'}</div>`:
     `<form id="groupForm" class="panel stack" style="margin-top:24px"><h2>${g?'Редактировать группу':'Новая группа'}</h2>
       <label class="field">Название группы *<input class="input" name="title" required maxlength="140" value="${esc(g?.title||'')}" placeholder="Название вашего цикла"></label>
       <label class="field">Тип группы<select name="kind">${Object.entries(GROUP_KINDS).map(([k,v])=>`<option value="${k}" ${g?.kind===k?'selected':''}>${v}</option>`).join('')}</select></label>
@@ -412,25 +414,28 @@ function workFormHTML(w){
   </form>`;
 }
 function bindWorkForm(w){
+  const workId=w?.id||Store.uid();
   let cover={...(w?w.cover:{from:COVERS[0][0],to:COVERS[0][1],symbol:'✦'})};
   $('#coverPick').addEventListener('click',e=>{const b=e.target.closest('.swatch');if(!b)return;cover.from=b.dataset.from;cover.to=b.dataset.to;$$('.swatch').forEach(x=>x.classList.toggle('on',x===b))});
   $('#symbolPick').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(!b)return;cover.symbol=b.dataset.s;$$('#symbolPick .chipbtn').forEach(x=>x.classList.toggle('on',x===b))});
   $('#workForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target);const u=me();
-    const data={id:w?w.id:Store.uid('work'),authorId:u.id,title:f.get('title').trim(),subtitle:f.get('subtitle').trim(),type:f.get('type'),genre:f.get('genre'),status:f.get('status'),ageRating:f.get('ageRating'),
+    const data={id:workId,authorId:u.id,title:f.get('title').trim(),subtitle:f.get('subtitle').trim(),type:f.get('type'),genre:f.get('genre'),status:f.get('status'),ageRating:f.get('ageRating'),
       tags:f.get('tags').split(',').map(t=>t.trim()).filter(Boolean),description:f.get('description').trim(),cover,legacyUrl:w?w.legacyUrl:null,featured:w?!!w.featured:false,views:w?w.views||0:0,createdAt:w?w.createdAt:Store.today()};
-    const btn=e.target.querySelector('[type=submit]');btn.disabled=true;try{await Store.upsertWork(data); toast(w?'Произведение сохранено':'Произведение создано! Теперь добавьте первую главу ✒'); location.hash='#/studio/work/'+data.id;}catch(err){toast(err.message,true);}finally{btn.disabled=false;}});
+    const btn=e.target.querySelector('[type=submit]');btn.disabled=true;try{await Store.upsertWork(data); toast(w?(u.role==='admin'?'Произведение сохранено':'Карточка сохранена. Статус публикации указан в мастерской.'):'Произведение создано! Теперь добавьте первую главу ✒'); location.hash='#/studio/work/'+data.id;}catch(err){toast(err.message,true);}finally{btn.disabled=false;}});
 }
 function pageStudioNew(){ if(!guardStudio()) return; setNav('studio');
   $('#app').innerHTML=`<div class="wrap"><div class="studio-grid">${studioSide('new')}<div><div class="kicker">Студия автора</div><h1 style="font-size:2.3rem;margin:10px 0 8px">Новое произведение</h1>
   <p class="muted">Рассказ, роман, цикл стихов, эссе — всё начинается с этой карточки. Главы добавите следующим шагом.</p><div class="panel" style="margin-top:20px">${workFormHTML(null)}</div></div></div></div>`; bindWorkForm(null); }
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-submit-review]');if(!b||b.disabled)return;b.disabled=true;try{await Store.submitForReview(b.dataset.submitReview);toast(me()?.role==='admin'?'Опубликовано':'Произведение отправлено на проверку');route();}catch(err){toast(err.message,true);b.disabled=false;}});
+function moderationPanel(w){return `<section class="panel publication-state" data-publication-state="${w.moderationStatus||'draft'}"><div class="action-row"><span class="pill gold">${esc(REVIEW_LABEL[w.moderationStatus]||(w.legacyUrl?'Опубликовано':'Черновик'))}</span>${!w.legacyUrl?`<button class="btn sm" type="button" data-submit-review="${esc(w.id)}" ${w.moderationStatus==='pending'?'disabled':''}>${me()?.role==='admin'?'Опубликовать':'Отправить на проверку'}</button>`:''}</div>${w.moderationNote?`<p><b>Комментарий модератора:</b> ${esc(w.moderationNote)}</p>`:''}<p class="small muted">${me()?.role==='admin'?'Ваши произведения публикуются без ожидания проверки.':'Публикацию проверяет администратор. Отправка главы ставит всё произведение в очередь. Изменение карточки или опубликованного текста снимает произведение с публикации до нового одобрения. Обычные черновики глав читателям не видны.'}</p>${Store.mode==='supabase'&&!Store.moderationReady?'<p class="small">Проверка ещё не подключена к базе: нужна SQL-миграция. Сохранение новых историй заблокировано.</p>':''}</section>`;}
 function pageStudioWork(id){
   if(!guardStudio()) return; const w=work(id); if(!w||w.authorId!==me().id){toast('Можно редактировать только свои произведения',true);location.hash='#/studio/works';return}
   setNav('studio'); const chs=chaptersOf(id,true);
   $('#app').innerHTML=`<div class="wrap"><div class="studio-grid">${studioSide('works')}<div>
     <div class="kicker">Редактирование</div><h1 style="font-size:2.2rem;margin:10px 0">«${esc(w.title)}»</h1>
     <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:20px"><a class="btn ghost sm" href="#/work/${id}">Страница для читателей →</a>${w.legacyUrl?'':`<a class="btn sm" href="#/studio/chapter/${id}/new">+ Новая глава</a>`}</div>
-    <div class="panel">${w.legacyUrl?`<h2>Исходный авторский текст</h2><p class="muted">Полный текст хранится в файле <code>${esc(w.legacyUrl)}</code>. Здесь можно менять карточку; сам текст редактируется в исходнике, чтобы не создавать вторую несогласованную версию.</p><a class="btn ghost sm" href="${esc(w.legacyUrl)}">Открыть полный текст ↗</a>`:`<h2 style="margin-bottom:14px">Главы и черновики · ${chs.length}</h2>`}
-    ${!w.legacyUrl&&chs.length?chs.map((c,i)=>`<div class="chapter-row"><span class="num">${String(i+1).padStart(2,'0')}</span><span style="flex:1"><b style="font-family:var(--serif)">${esc(c.title)}</b> ${c.status==='draft'?'<span class="pill gold">черновик</span>':'<span class="pill">опубликовано</span>'}<br><span class="small muted">${fmt(words(c.body))} слов · ${esc(c.createdAt||'')}</span></span>
+    ${moderationPanel(w)}<div class="panel">${w.legacyUrl?`<h2>Исходный авторский текст</h2><p class="muted">Полный текст хранится в файле <code>${esc(w.legacyUrl)}</code>. Здесь можно менять карточку; сам текст редактируется в исходнике, чтобы не создавать вторую несогласованную версию.</p><a class="btn ghost sm" href="${esc(w.legacyUrl)}">Открыть полный текст ↗</a>`:`<h2 style="margin-bottom:14px">Главы и черновики · ${chs.length}</h2>`}
+    ${!w.legacyUrl&&chs.length?chs.map((c,i)=>`<div class="chapter-row"><span class="num">${String(i+1).padStart(2,'0')}</span><span style="flex:1"><b style="font-family:var(--serif)">${esc(c.title)}</b> ${c.status==='draft'?'<span class="pill gold">черновик</span>':`<span class="pill">${Store.isWorkPublic(w)?'опубликовано':w.moderationStatus==='pending'?'на проверке':'подготовлена к публикации'}</span>`}<br><span class="small muted">${fmt(words(c.body))} слов · ${esc(c.createdAt||'')}</span></span>
       <button class="btn dark sm" data-action="ch-up" data-id="${c.id}" ${i===0?'disabled':''}>↑</button><button class="btn dark sm" data-action="ch-down" data-id="${c.id}" ${i===chs.length-1?'disabled':''}>↓</button>
       <a class="btn dark sm" href="#/studio/chapter/${id}/${c.id}">✎ Редактировать</a><button class="btn danger sm" data-action="del-chapter" data-id="${c.id}">✕</button></div>`).join(''):w.legacyUrl?'':'<p class="muted">Глав пока нет. Напишите первую — читатели уже заждались.</p>'}
     </div>
@@ -439,11 +444,11 @@ function pageStudioWork(id){
 function pageStudioChapter(wid,cid){
   if(!guardStudio())return;const w=work(wid);if(!w||w.authorId!==me().id)return page404();
   if(w.legacyUrl){location.hash='#/studio/work/'+wid;return;}
-  const c=cid==='new'?null:S.chapters.find(x=>x.id===cid&&x.workId===wid);if(cid!=='new'&&!c)return page404();setNav('studio');
+  const c=cid==='new'?null:S.chapters.find(x=>x.id===cid&&x.workId===wid);if(cid!=='new'&&!c)return page404();const draftId=c?.id||Store.uid();setNav('studio');
   $('#app').innerHTML='<div class="wrap workshop-wrap" id="writerRoot"></div>';
-  disposePage=InkWriter.mount({host:$('#writerRoot'),work:w,chapter:c,chapterId:cid,userId:me().id,notify:toast,
-    save:patch=>Store.upsertChapter({id:c?.id||Store.uid(),workId:wid,...patch,order:c?.order||Math.max(0,...chaptersOf(wid,true).map(x=>x.order))+1,createdAt:c?.createdAt||Store.today()}),
-    onSaved:status=>{toast(status==='published'?'Глава опубликована':'Черновик сохранён в аккаунте');location.hash='#/studio/work/'+wid;}});
+  disposePage=InkWriter.mount({host:$('#writerRoot'),work:w,chapter:c,chapterId:cid,userId:me().id,notify:toast,requiresReview:me().role!=='admin',
+    save:patch=>Store.upsertChapter({id:draftId,workId:wid,...patch,order:c?.order||Math.max(0,...chaptersOf(wid,true).map(x=>x.order))+1,createdAt:c?.createdAt||Store.today()}),
+    onSaved:status=>{toast(status==='published'?(Store.isWorkPublic(work(wid))?'Глава опубликована':'Глава отправлена на проверку. До одобрения произведение скрыто от читателей.'):'Черновик сохранён в аккаунте');location.hash='#/studio/work/'+wid;}});
 }
 function socialArrow(){return '<svg class="social-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>';}
 function profileSocials(c){
@@ -526,19 +531,25 @@ function pageProfile(){
   disposePage=()=>{disposed=true;cancelAnimationFrame(previewFrame);theme.dispose();Object.values(media).forEach(m=>m.dispose());};
 
 }
+function reviewQueueHTML(){
+  const queue=S.works.filter(w=>w.moderationStatus==='pending').sort((a,b)=>(a.submittedAt||'').localeCompare(b.submittedAt||''));
+  return `<section class="panel review-queue"><div class="sec-head"><div><div class="kicker">Ручная премодерация</div><h2>На проверке · ${queue.length}</h2></div><button class="btn ghost sm" type="button" id="refreshReviewQueue">Обновить</button></div>${Store.mode==='supabase'&&!Store.moderationReady?'<p class="moderation-warning">Серверная премодерация ещё не включена. Примените миграцию 20261102000200_manual_publication_review.sql. До этого нельзя считать прямые запросы защищёнными.</p>':''}<p class="small muted">Откройте заявку и прочитайте все подготовленные главы. Черновики не публикуются. Если автор изменит текст после загрузки заявки, решение будет отклонено — потребуется обновить очередь.</p>${Store.publicationReadError?'<p class="moderation-warning">Не удалось загрузить очередь. Нажмите «Обновить»; пустой список не означает отсутствие заявок.</p>':''}${queue.map(w=>`<details class="review-request" data-review-request="${esc(w.id)}"><summary><span><b>${esc(w.title)}</b><small>${esc(author(w.authorId).displayName)} · @${esc(author(w.authorId).username)} · версия ${w.moderationRevision||1}</small></span><span class="pill">Проверить</span></summary><div class="review-request-body"><p>${esc(w.description)}</p><p class="small muted">${esc(w.genre)} · ${esc(w.ageRating||'12+')}</p>${chaptersOf(w.id).map(c=>`<section class="review-chapter"><h3>${esc(c.title)}</h3><div class="reader-text">${renderText(c.body,w.type==='poetry')}</div></section>`).join('')||'<p class="muted">Нет подготовленных глав. Одобрение недоступно.</p>'}<form class="review-decision stack" data-review-work="${esc(w.id)}" data-revision="${w.moderationRevision||1}"><label class="field">Причина возврата на доработку (обязательна при возврате)<textarea class="input" name="note" rows="3" maxlength="2000"></textarea></label><div class="action-row"><button class="btn" name="decision" value="approved" ${!chaptersOf(w.id).length?'disabled':''}>Одобрить публикацию</button><button class="btn ghost" name="decision" value="rejected">Вернуть на доработку</button></div><p class="small muted" role="status"></p></form></div></details>`).join('')||'<div class="empty">В очереди нет новых заявок.</div>'}</section>`;
+}
 function pageAdmin(){
   const u=me(); if(!u||u.role!=='admin'){toast('Доступ только для администратора платформы',true);location.hash='#/';return}
   setNav('studio');
   $('#app').innerHTML=`<div class="wrap"><div class="studio-grid">${studioSide('dash')}<div>
    <div class="kicker">Модерация платформы</div><h1 style="font-size:2.3rem;margin:10px 0">Панель администратора</h1>
    <div class="statgrid"><div class="statbox"><b>${S.authors.length}</b>авторов</div><div class="statbox"><b>${S.works.length}</b>произведений</div><div class="statbox"><b>${S.reviews.length}</b>рецензий</div><div class="statbox"><b>${S.comments.length}</b>комментариев</div><div class="statbox"><b>${Store.mode}</b>режим данных</div></div>
-   <section class="panel" style="margin-bottom:24px"><h2>♛ Значки и достижения</h2><p class="muted">Выберите автора, выдайте свой значок или отзовите существующий. Права администратора этим действием не выдаются.</p><form id="badgeForm" class="stack"><label class="field">Автор<select name="authorId">${S.authors.filter(a=>Store.mode!=='supabase'||a.id!=='cnizroman').map(a=>`<option value="${esc(a.id)}">${esc(a.displayName)} · @${esc(a.username)}</option>`).join('')}</select></label><div id="adminBadges" class="chiprow"></div><div class="grid two"><label class="field">Название значка<input class="input" name="badge" maxlength="80" required placeholder="Например: Мастер атмосферы"></label><label class="field">Готовые варианты<select id="badgePreset"><option value="">Свой значок</option><option>Выбор редакции</option><option>Мастер атмосферы</option><option>Завершённый цикл</option><option>Голос сообщества</option><option>Поэт платформы</option></select></label></div><button class="btn" type="submit">Выдать значок</button><p id="badgeFeedback" role="status" class="small muted"></p></form></section>
+   ${reviewQueueHTML()}<section class="panel" style="margin-bottom:24px"><h2>♛ Значки и достижения</h2><p class="muted">Выберите автора, выдайте свой значок или отзовите существующий. Права администратора этим действием не выдаются.</p><form id="badgeForm" class="stack"><label class="field">Автор<select name="authorId">${S.authors.filter(a=>Store.mode!=='supabase'||a.id!=='cnizroman').map(a=>`<option value="${esc(a.id)}">${esc(a.displayName)} · @${esc(a.username)}</option>`).join('')}</select></label><div id="adminBadges" class="chiprow"></div><div class="grid two"><label class="field">Название значка<input class="input" name="badge" maxlength="80" required placeholder="Например: Мастер атмосферы"></label><label class="field">Готовые варианты<select id="badgePreset"><option value="">Свой значок</option><option>Выбор редакции</option><option>Мастер атмосферы</option><option>Завершённый цикл</option><option>Голос сообщества</option><option>Поэт платформы</option></select></label></div><button class="btn" type="submit">Выдать значок</button><p id="badgeFeedback" role="status" class="small muted"></p></form></section>
    <div class="panel"><h3 style="margin-bottom:12px">Рецензии</h3>${S.reviews.map(r=>`<div class="comment"><div style="flex:1"><b>${esc(r.name)}</b> · «${esc(work(r.workId)?.title||'удалено')}» · ★ ${reviewTotal(r)}/21 <span class="small muted">${esc(r.createdAt)}</span><p style="margin:4px 0 0">${esc(r.text)}</p></div><button class="btn danger sm" data-action="del-review" data-id="${r.id}">Удалить</button></div>`).join('')||'<p class="muted">Нет рецензий</p>'}</div>
    <div class="panel" style="margin-top:18px"><h3 style="margin-bottom:12px">Комментарии</h3>${S.comments.map(c=>`<div class="comment"><div style="flex:1"><b>${esc(c.name)}</b> · «${esc(work(c.workId)?.title||'удалено')}» <span class="small muted">${esc(c.createdAt)}</span><p style="margin:4px 0 0">${esc(c.text)}</p></div><button class="btn danger sm" data-action="del-comment" data-id="${c.id}">Удалить</button></div>`).join('')||'<p class="muted">Нет комментариев</p>'}</div>
    <div class="panel" style="margin-top:18px"><h3>Произведения платформы</h3><p class="small muted">Значок «Выбор платформы» ставит произведение на главную.</p>
    ${S.works.map(w=>`<div class="comment"><div style="flex:1"><b>${esc(w.title)}</b> <span class="small muted">${esc(author(w.authorId).displayName)} · 👁 ${fmt(w.views||0)}</span></div><button class="btn dark sm" data-action="feature" data-id="${w.id}">${w.featured?'✦ На главной':'На главную'}</button><button class="btn danger sm" data-action="del-work" data-id="${w.id}">Удалить</button></div>`).join('')}</div>
    <p class="small muted" style="margin-top:14px">Старая панель модерации рецензий книг Cnizroman сохранена: <a href="reviews-admin.html" style="color:var(--gold)">reviews-admin.html ↗</a></p>
   </div></div></div>`;
+  $('#refreshReviewQueue').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;try{if(Store.mode==='supabase')await Store.pullFromSupabase({strict:true});route();}catch(err){toast(err.message,true);b.disabled=false;}});
+  $$('.review-decision').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const buttons=$$('button',form),feedback=$('[role=status]',form);if(form.dataset.busy)return;form.dataset.busy='true';buttons.forEach(b=>b.disabled=true);try{await Store.reviewPublication(form.dataset.reviewWork,Number(form.dataset.revision),e.submitter?.value,form.elements.note.value);toast('Решение сохранено');route();}catch(err){feedback.textContent=err.message;delete form.dataset.busy;buttons.forEach(b=>b.disabled=false);}}));
   const form=$('#badgeForm'),select=form.elements.authorId;
   const renderBadges=()=>{const target=author(select.value);$('#adminBadges').innerHTML=(target.badges||[]).map(b=>`<button class="chipbtn" type="button" data-revoke-badge="${esc(b)}" title="Отозвать значок">${esc(b)} ×</button>`).join('')||'<span class="muted">У автора нет значков.</span>';};
   select.addEventListener('change',renderBadges);renderBadges();
@@ -689,7 +700,7 @@ function bindLiveSearch(){
   const update=()=>{
     const norm=t=>String(t).toLocaleLowerCase('ru').replace(/ё/g,'е').trim(),q=norm(input.value);selected=-1;
     if(!q){close();return;}
-    const list=S.works.filter(w=>norm(w.title).includes(q)||groupsOf(w.id).some(g=>norm(g.title).includes(q)));
+    const list=publicWorks().filter(w=>norm(w.title).includes(q)||groupsOf(w.id).some(g=>norm(g.title).includes(q)));
     box.innerHTML=shelfEntries(list).slice(0,6).map((e,i)=>{const g=e.group,w=e.work;return `<a id="searchOption${i}" role="option" aria-selected="false" href="${g?'#/group/'+encodeURIComponent(g.id):'#/work/'+w.id}"><b>${esc(g?g.title:w.title)}</b><span>${g?esc(GROUP_KINDS[g.kind])+' · '+e.matches.map(x=>esc(x.title)).join(', '):esc(author(w.authorId).displayName)}</span></a>`;}).join('')||'<p class="muted">Ничего не найдено</p>';
     box.hidden=false;input.setAttribute('aria-expanded','true');
   };

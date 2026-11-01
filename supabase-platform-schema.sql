@@ -178,7 +178,11 @@ create policy profiles_update on public.profiles for update to authenticated
 
 -- произведения: читать всем, писать свои
 drop policy if exists works_read on public.works;
-create policy works_read on public.works for select to anon, authenticated using (true);
+-- Retain v6 moderation on a later rerun of this base schema. Before its migration,
+-- the column is absent; to_jsonb avoids referencing a nonexistent SQL column.
+create policy works_read on public.works for select to anon, authenticated using
+  (coalesce(to_jsonb(works)->>'moderation_status','approved')='approved'
+   or author_id=auth.uid() or public.is_platform_admin());
 drop policy if exists works_insert on public.works;
 create policy works_insert on public.works for insert to authenticated with check (author_id = auth.uid());
 drop policy if exists works_update on public.works;
@@ -190,7 +194,8 @@ create policy works_delete on public.works for delete to authenticated using (au
 -- главы: опубликованные видны всем, черновики — автору и админу
 drop policy if exists chapters_read on public.chapters;
 create policy chapters_read on public.chapters for select to anon, authenticated
-  using (status = 'published' or public.is_platform_admin()
+  using ((status = 'published' and exists(select 1 from public.works w where w.id=work_id
+           and coalesce(to_jsonb(w)->>'moderation_status','approved')='approved')) or public.is_platform_admin()
          or exists (select 1 from public.works w where w.id = work_id and w.author_id = auth.uid()));
 drop policy if exists chapters_insert on public.chapters;
 create policy chapters_insert on public.chapters for insert to authenticated

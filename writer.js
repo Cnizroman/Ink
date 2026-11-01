@@ -1,5 +1,5 @@
 /* Chapter workshop. Drafts are isolated by account, work and chapter. */
-window.InkWriter={mount({host,work,chapter,chapterId,userId,save,onSaved,notify}){
+window.InkWriter={mount({host,work,chapter,chapterId,userId,save,onSaved,notify,requiresReview=false}){
   const esc=InkText.escape, key=`chernila_workshop_${userId}_${work.id}_${chapterId}`;
   let settings={size:20,leading:1.8,font:'serif',goal:1000,preview:true};
   try{settings={...settings,...JSON.parse(localStorage.getItem('chernila_workshop_settings')||'{}')};}catch(_){}
@@ -16,7 +16,7 @@ window.InkWriter={mount({host,work,chapter,chapterId,userId,save,onSaved,notify}
     <div class="writer-panels"><label class="field">Текст<textarea class="input editor" id="bodyEd" name="body" maxlength="400000" spellcheck="true" placeholder="Начните историю…">${esc(original.body)}</textarea></label><section class="writer-preview" aria-label="Предпросмотр главы"><div class="kicker">Так увидит читатель</div><div id="chapterPreview" class="reader-text"></div></section></div>
     <div class="writer-status" role="status"><span id="wordCount"></span><span id="draftStatus">Изменений нет</span></div><progress id="writingGoal" max="100" value="0" aria-label="Прогресс к цели"></progress>
     <details class="panel"><summary>Заметки автора · видны только в этом браузере</summary><textarea class="input" id="writerNotes" rows="4" maxlength="10000" placeholder="План сцены, персонажи, что проверить перед публикацией…"></textarea></details>
-    <div class="action-row"><button class="btn" type="submit" name="st" value="published">${chapter?.status==='published'?'Сохранить публикацию':'Опубликовать главу'}</button><button class="btn ghost" type="submit" name="st" value="draft">Сохранить черновик</button><button class="btn dark" type="button" id="exportDraft">Скачать текст .txt</button></div>
+    <div class="action-row"><button class="btn" type="submit" name="st" value="published">${requiresReview?'Отправить на проверку':chapter?.status==='published'?'Сохранить публикацию':'Опубликовать главу'}</button><button class="btn ghost" type="submit" name="st" value="draft">Сохранить черновик</button><button class="btn dark" type="button" id="exportDraft">Скачать текст .txt</button></div>
     <p class="small muted">Выделите текст и выберите оформление. HTML не исполняется. Предпросмотр использует ту же разметку, что и читалка. Автосохранение — локальное; кнопки выше сохраняют главу в аккаунте.</p>
   </form>
   <dialog id="writerDialog" class="writer-dialog" aria-labelledby="writerDialogTitle"><form method="dialog" class="stack"><h2 id="writerDialogTitle">Вставить блок</h2><label class="field">Заголовок / имя говорящего<input class="input" id="blockTitle" maxlength="100"></label><label class="field">Содержимое<textarea class="input" id="blockBody" rows="6"></textarea></label><label class="field" id="alignmentField" hidden>Выравнивание<select id="blockAlignment"><option value="left">Слева</option><option value="center">По центру</option><option value="right">Справа</option></select></label><div class="action-row"><button class="btn" value="insert">Вставить</button><button class="btn ghost" value="cancel" formnovalidate>Отмена</button></div></form></dialog></div>`;
@@ -71,7 +71,7 @@ window.InkWriter={mount({host,work,chapter,chapterId,userId,save,onSaved,notify}
   $('#chapterForm').addEventListener('submit',async e=>{
     e.preventDefault();const status=e.submitter?.value||'draft';
     if(!title.value.trim()||!ta.value.trim()){notify('Заполните заголовок и текст главы',true);return;}
-    if(status==='published'&&!confirm('Опубликовать эту версию главы для читателей?'))return;
+    if(status==='published'&&!confirm(requiresReview?'Отправить главу на проверку? Произведение будет скрыто от читателей до одобрения администратором.':'Опубликовать эту версию главы для читателей?'))return;
     const buttons=[...host.querySelectorAll('[type=submit]')];buttons.forEach(b=>b.disabled=true);persist();
     try{const saved=await save({title:title.value.trim(),body:ta.value,status});clean=true;dirty=false;clearTimeout(timer);
       // Retain private planning notes but not an outdated chapter backup.
