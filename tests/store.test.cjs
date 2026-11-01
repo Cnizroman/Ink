@@ -239,3 +239,15 @@ test('expired-session requests share one refresh and never adopt another account
 test('regular email confirmation is not misreported as a failed social connection',async()=>{
  const {store,ctx,ephemeral}=harness({remote:async()=>({ok:true,text:async()=>JSON.stringify([])})});await store.init();let clean='';ctx.history={replaceState:(_,__,url)=>clean=url};ctx.location.href='https://site.test/Ink/#access_token=confirmation-token';await store.completeSocialReturn();assert.equal(clean,'/Ink/#/auth');assert.equal(ephemeral.get('chernila_social_result'),undefined);assert.equal(store.session,null);
 });
+
+
+test('PostgREST Prefer is scoped to REST and never sent to Auth or Edge login',async()=>{
+ const requests=[];const remote=async(url,opts={})=>{requests.push({url,opts});const path=new URL(url).pathname;return {ok:true,text:async()=>JSON.stringify(path==='/functions/v1/username-login'||path==='/auth/v1/token'?{access_token:'session',refresh_token:'refresh',user:{id:'writer',email:'writer@example.test'}}:path==='/rest/v1/profiles'?[{id:'writer',username:'writer'}]:[])};};
+ const {store}=harness({remote});await store.init();await store.login({login:'writer',password:'correct-password'});
+ assert.equal(requests.find(x=>x.url.includes('/functions/')).opts.headers.Prefer,undefined);assert.equal(requests.find(x=>x.url.includes('/rest/')).opts.headers.Prefer,'return=representation');
+ await store.login({login:'writer@example.test',password:'correct-password'});assert.equal(requests.find(x=>x.url.includes('/auth/v1/token')).opts.headers.Prefer,undefined);
+});
+
+test('login infrastructure failures are not reported as incorrect credentials',async()=>{
+ for(const status of [404,500,502]){const remote=async(url)=>new URL(url).pathname.startsWith('/functions/')?{ok:false,status,text:async()=>'{"message":"upstream failure"}'}:{ok:true,text:async()=>JSON.stringify([])};const {store}=harness({remote});await store.init();await assert.rejects(store.login({login:'cnizroman',password:'correct-password'}),new RegExp('HTTP '+status));assert.equal(store.session,null);}
+});

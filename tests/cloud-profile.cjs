@@ -2,7 +2,7 @@ process.chdir(require('node:path').resolve(__dirname,'..'));
 const {chromium:pw}=require('playwright-core'),cp=require('@sparticuz/chromium'),assert=require('node:assert/strict');
 (async()=>{
  const libs=await cp.inflate(require('node:path').resolve(require.resolve('@sparticuz/chromium'),'../../bin/al2023.tar.br'));cp.setupLambdaEnvironment(libs+'/lib');
- const browser=await pw.launch({executablePath:await cp.default.executablePath(),args:cp.default.args,headless:true}),context=await browser.newContext({serviceWorkers:'block',viewport:{width:1200,height:900}});
+ const browser=await pw.launch({executablePath:await cp.default.executablePath(),args:cp.default.args.filter(a=>a!=='--disable-web-security'),headless:true}),context=await browser.newContext({serviceWorkers:'block',viewport:{width:1200,height:900}});
  const owner='11111111-1111-4111-8111-111111111111';let profile={id:owner,username:'cnizroman',display_name:'Cnizroman',role:'admin',is_founder:true,customization:{}};
  const files=new Map();let failProfile=false,failUpload=false,linked=false,redirect='',identityReads=0;
  await context.addInitScript(({owner})=>localStorage.setItem('chernila_session_v2',JSON.stringify({authorId:owner,token:'original-session'})),{owner});

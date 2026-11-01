@@ -5,7 +5,7 @@ const cp=require('@sparticuz/chromium');
 const libs=await cp.inflate(require('node:path').resolve(require.resolve('@sparticuz/chromium'),'../../bin/al2023.tar.br'));
 cp.setupLambdaEnvironment(libs+'/lib');
 require('node:fs').mkdirSync('.cache',{recursive:true});
-const browser=await pw.launch({executablePath:await chromium.executablePath(),args:chromium.args,headless:true});
+const browser=await pw.launch({executablePath:await chromium.executablePath(),args:chromium.args.filter(a=>a!=='--disable-web-security'),headless:true});
 const ctx=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block'});
 await ctx.route('**/*',r=>new URL(r.request().url()).hostname==='127.0.0.1'?r.continue():r.abort());
 const page=await ctx.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());

@@ -1,15 +1,8 @@
-const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
-const source=fs.readFileSync(require('node:path').resolve(__dirname,'../supabase/functions/username-login/index.ts'),'utf8').replace(/^import .*;$/m,'');
-function handler(options={}){
- let serve,lookups=0;const attempts=[];
- const service={rpc:async(name,args)=>{attempts.push({name,args});return options.rpcError?{error:{message:'private failure'}}:{data:options.allowed!==false,error:null};},from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>{lookups++;return {data:options.unknown?null:{id:'owner'},error:null};}})})}),auth:{admin:{getUserById:async()=>({data:{user:{email:'private@example.test'}}})}}};
- const auth={auth:{signInWithPassword:async()=>options.badPassword?{data:{},error:{message:'private auth failure'}}:{data:{session:{access_token:'session-token',refresh_token:'refresh-token',expires_in:3600},user:{id:options.wrongIdentity?'other':'owner',email:'private@example.test',private_extra:'never-return'}},error:null}}};
- const ctx=vm.createContext({Response,TextEncoder,TextDecoder,Uint8Array,crypto:require('node:crypto').webcrypto,Deno:{env:{get:name=>name==='SUPABASE_SERVICE_ROLE_KEY'?'service':name==='SUPABASE_ANON_KEY'?'anon':'https://project.example.test'},serve:fn=>serve=fn},createClient:(_,key)=>key==='service'?service:auth});vm.runInContext(source,ctx);
- return {call:(body,method='POST')=>serve(new Request('https://project.example.test/functions/v1/username-login',{method,...(method==='POST'?{body:typeof body==='string'?body:JSON.stringify(body),headers:{'x-forwarded-for':'203.0.113.10'}}:{})})),attempts,get lookups(){return lookups;}};
-}
+const test=require('node:test'),assert=require('node:assert/strict');
+const {handler}=require('./helpers/username-login.cjs');
 const credentials={username:'cnizroman',password:'correct-password'};
 test('Edge login handles preflight and rejects invalid/oversized bodies before privileged work',async()=>{
- const h=handler();assert.equal((await h.call(null,'OPTIONS')).status,200);assert.equal((await h.call(null,'GET')).status,405);
+ const h=handler(),preflight=await h.call(null,'OPTIONS');assert.equal(preflight.status,200);for(const name of ['authorization','apikey','content-type','prefer'])assert.ok(preflight.headers.get('access-control-allow-headers').toLowerCase().split(/,\s*/).includes(name),'missing CORS header: '+name);assert.equal((await h.call(null,'GET')).status,405);
  for(const input of ['{','x'.repeat(4000),{username:'../admin',password:'correct-password'}])assert.equal((await h.call(input)).status,401);
  assert.equal(h.lookups,0);assert.equal(h.attempts.length,0);
 });

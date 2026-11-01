@@ -74,7 +74,7 @@ function saveLocal(state){try{localStorage.setItem(LS_DB,JSON.stringify(state));
 /* ---------- Supabase REST ---------- */
 let sbToken=null,refreshFlight=null;
 let sbLive=false; // true только после успешной проверки таблиц платформы
-function sbHeaders(extra){return Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+(sbToken||SB_KEY),'Content-Type':'application/json','Prefer':'return=representation'},extra||{})}
+function sbHeaders(extra){return Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+(sbToken||SB_KEY),'Content-Type':'application/json'},extra||{})}
 async function sbFetch(path,opts){
   if(!sbLive) return null; // локальный режим: в сеть не ходим вообще
   const expires=Store.session?.expiresAt||tokenExpiry(sbToken),oldToken=sbToken,requestAuth=opts?.headers?.Authorization;
@@ -82,7 +82,9 @@ async function sbFetch(path,opts){
     try{if(!refreshFlight)refreshFlight=Store.refreshSession().finally(()=>{refreshFlight=null;});await refreshFlight;}catch(e){if((e.status===400||e.status===401)&&Store.session?.token===oldToken)Store.setSession(null);throw e;}
     if(requestAuth)opts={...opts,headers:{...opts.headers,Authorization:'Bearer '+sbToken}};
   }
-  const r=await fetch(SB_URL+path,Object.assign({headers:sbHeaders()},opts||{}));
+  // Prefer is a PostgREST header, not part of the Auth / Edge CORS contract.
+  const headers=Object.assign(sbHeaders(),path.startsWith('/rest/v1/')?{'Prefer':'return=representation'}:{},opts?.headers||{});
+  const r=await fetch(SB_URL+path,{...opts,headers});
   const txt=await r.text(); let data=null; try{data=txt?JSON.parse(txt):null}catch(e){}
   if(!r.ok){const error=new Error((data&&(data.message||data.msg||data.error_description))||('Supabase '+r.status));error.status=r.status;throw error;}
   return data;
@@ -243,9 +245,9 @@ const Store={
       if(/.+@.+\..+/.test(login)) data=await sbFetch('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email:login,password})});
       else {
         try{data=await sbFetch('/functions/v1/username-login',{method:'POST',body:JSON.stringify({username:login,password})});}
-        catch(e){if(e.status===429)throw new Error('Слишком много попыток входа. Подождите и попробуйте снова.');if(e.status===503)throw new Error('Сервис входа временно недоступен. Попробуйте позже.');if(e.status===401)throw new Error('Неверный логин или пароль.');throw new Error('Вход по юзернейму не выполнен. Проверьте данные; если функция username-login ещё не подключена, войдите по email.');}
+        catch(e){if(e.status===429)throw new Error('Слишком много попыток входа. Подождите и попробуйте снова.');if(e.status===503)throw new Error('Сервис входа временно недоступен. Попробуйте позже.');if(e.status===401)throw new Error('Неверный логин или пароль.');if(e.status===404)throw new Error('Сервис входа по юзернейму не найден (HTTP 404). Пока можно войти по email.');if(e.status)throw new Error('Сервис входа по юзернейму недоступен (HTTP '+e.status+'). Попробуйте позже или войдите по email.');throw new Error('Браузер не смог связаться с сервисом входа. Проверьте соединение или попробуйте войти по email.');}
       }
-      if(!data.access_token||!data.user)throw new Error('Не удалось войти.');
+      if(!data?.access_token||!data.user)throw new Error('Сервис входа вернул некорректный ответ. Попробуйте позже.');
       this.setSession({authorId:data.user.id,token:data.access_token,refreshToken:data.refresh_token,email:data.user.email||login});
       sbToken=data.access_token;
       await this.pullFromSupabase();

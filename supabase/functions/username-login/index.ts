@@ -1,6 +1,6 @@
 // Public password login: service credentials remain only in the Edge environment.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info','Access-Control-Allow-Methods':'POST, OPTIONS','Content-Type':'application/json','Cache-Control':'no-store'};
+const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info, prefer','Access-Control-Allow-Methods':'POST, OPTIONS','Content-Type':'application/json','Cache-Control':'no-store'};
 const reply=(message,status)=>new Response(JSON.stringify({message}),{status,headers});
 async function readSmallBody(req){
   const reader=req.body?.getReader();if(!reader)return '';
