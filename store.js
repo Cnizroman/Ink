@@ -17,6 +17,12 @@ const today=()=>new Date().toISOString().slice(0,10);
 function clone(o){return JSON.parse(JSON.stringify(o))}
 function hash(s){let h=0;for(let i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i);h|=0}return 'h'+Math.abs(h)}
 
+function cleanCustomization(c={}){
+  const color=(v,f)=>/^#[0-9a-f]{6}$/i.test(v||'')?v:f;
+  const url=v=>{v=String(v||'').trim();if(!v)return '';if(v.length>1000||!/^https:\/\//i.test(v))throw new Error('Ссылки должны начинаться с https:// и быть не длиннее 1000 символов.');return v;};
+  return {avatarUrl:url(c.avatarUrl),bannerUrl:url(c.bannerUrl),website:url(c.website),telegram:url(c.telegram),accent:color(c.accent,'#c8a96e'),bannerColor:color(c.bannerColor,'#302418'),pronouns:String(c.pronouns||'').slice(0,60),genres:(Array.isArray(c.genres)?c.genres:[]).map(String).slice(0,8).map(x=>x.slice(0,60)),layout:c.layout==='compact'?'compact':'expanded',showLocation:c.showLocation!==false,showStats:c.showStats!==false};
+}
+function safeLegacyUrl(id,url){const seed=window.CHERNILA_SEED.works.find(w=>w.id===id);return seed&&seed.legacyUrl===url?url:null;}
 function seedState(){
   const s=clone(window.CHERNILA_SEED);
   s.users=[ // локальный аккаунт основателя (вход в локальном режиме: cnizroman / demo1234)
@@ -48,7 +54,7 @@ function migrateLocal(d){
 }
 function ensureGroups(state){
   if(!Array.isArray(state.groups)) state.groups=[];
-  const founder=state.authors.find(a=>a.username==='cnizroman');
+  const founder=state.authors.find(a=>a.username==='cnizroman'&&(a.founder||a.id==='cnizroman'));
   if(founder) state.groups.forEach(g=>{if(g.authorId==='cnizroman') g.authorId=founder.id;});
   // После удаления автором не восстанавливаем цикл при каждом открытии.
   if(!state.groupsInitialized){
@@ -80,22 +86,23 @@ async function probeSupabase(){
   try{ await sbFetch('/rest/v1/works?select=id&limit=1'); return true; }catch(e){ sbLive=false; return false; }
 }
 /* Маппинг строк Supabase -> внутренняя модель */
-function mapProfile(r){return {id:r.id,username:r.username,displayName:r.display_name||r.username,bio:r.bio||'',motto:r.motto||'',location:r.location||'',hue:r.avatar_hue??38,role:r.role||'author',founder:!!r.is_founder,joinedAt:(r.created_at||'').slice(0,10),badges:r.badges||[]}}
-function mapWork(r){return {id:r.id,authorId:r.author_id,title:r.title,subtitle:r.subtitle||'',type:r.type,genre:r.genre,tags:r.tags||[],description:r.description||'',status:r.status,ageRating:r.age_rating||'12+',legacyUrl:r.legacy_url||null,featured:!!r.featured,views:r.views||0,cover:r.cover||{from:'#222',to:'#c8a96e',symbol:'✦'},createdAt:(r.created_at||'').slice(0,10),updatedAt:(r.updated_at||'').slice(0,10)}}
+function mapProfile(r){return {id:r.id,username:r.username,displayName:r.display_name||r.username,bio:r.bio||'',motto:r.motto||'',location:r.location||'',hue:r.avatar_hue??38,role:r.role||'author',founder:!!r.is_founder,joinedAt:(r.created_at||'').slice(0,10),badges:r.badges||[],customization:(()=>{try{return cleanCustomization(r.customization||{})}catch(_){return cleanCustomization()}})()}}
+function mapWork(r){return {id:r.id,authorId:r.author_id,title:r.title,subtitle:r.subtitle||'',type:r.type,genre:r.genre,tags:r.tags||[],description:r.description||'',status:r.status,ageRating:r.age_rating||'12+',legacyUrl:safeLegacyUrl(r.id,r.legacy_url),featured:!!r.featured,views:r.views||0,cover:r.cover||{from:'#222',to:'#c8a96e',symbol:'✦'},createdAt:(r.created_at||'').slice(0,10),updatedAt:(r.updated_at||'').slice(0,10)}}
 function mapChapter(r){return {id:r.id,workId:r.work_id,title:r.title,body:r.body||'',order:r.sort_order||1,status:r.status||'published',createdAt:(r.created_at||'').slice(0,10)}}
 
 
 /* Книги основателя встроены в платформу: подмешиваем их к данным Supabase,
    чтобы владельцу не пришлось вносить их в базу вручную. Если основатель
-   зарегистрировался по-настоящему (username cnizroman), книги автоматически
+   подтверждён владельцем в базе (is_founder + cnizroman), книги автоматически
    привязываются к его настоящему аккаунту. */
 function injectFounder(state){
   const seed=window.CHERNILA_SEED; if(!seed) return;
-  const seedFounder=seed.authors.find(a=>a.username==='cnizroman'); if(!seedFounder) return;
-  let founder=state.authors.find(a=>a.username==='cnizroman');
+  const seedFounder=seed.authors.find(a=>a.username==='cnizroman'&&(a.founder||a.id==='cnizroman')); if(!seedFounder) return;
+  let founder=state.authors.find(a=>a.username==='cnizroman'&&(a.founder||a.id==='cnizroman'));
   if(!founder){ founder=clone(seedFounder); state.authors.unshift(founder); }
   seed.works.forEach(sw=>{
-    if(state.works.some(w=>w.id===sw.id||(sw.legacyUrl&&w.legacyUrl===sw.legacyUrl))) return;
+    const existing=state.works.find(w=>w.id===sw.id);
+    if(existing){existing.authorId=founder.id;existing.legacyUrl=sw.legacyUrl;return;}
     const w=clone(sw); w.authorId=founder.id; state.works.push(w);
     seed.chapters.filter(c=>c.workId===sw.id).forEach(sc=>{
       if(!state.chapters.some(c=>c.id===sc.id)) state.chapters.push(clone(sc));
@@ -104,7 +111,7 @@ function injectFounder(state){
 }
 /* Настоящий аккаунт cnizroman «усыновляет» встроенного основателя */
 function adoptFounderIdentity(state, real){
-  if(!real||real.username!=='cnizroman'||real.id==='cnizroman') return;
+  if(!real||!real.founder||real.username!=='cnizroman'||real.id==='cnizroman') return;
   if(!state.authors.some(a=>a.id==='cnizroman')) return;
   state.works.forEach(w=>{ if(w.authorId==='cnizroman') w.authorId=real.id; });
   (state.groups||[]).forEach(g=>{ if(g.authorId==='cnizroman') g.authorId=real.id; });
@@ -117,7 +124,7 @@ function adoptFounderIdentity(state, real){
 const Store={
   mode:'local', // 'supabase' | 'local'
   state:null, session:null,
-  uid, today,
+  uid, today, cleanCustomization,
 
   async init(){
     this.state=loadLocal();
@@ -126,12 +133,13 @@ const Store={
     const ok=await probeSupabase();
     if(ok){
       this.mode='supabase';
+      if(this.session&&!this.session.token)this.setSession(null);
       try{ await this.pullFromSupabase(); }catch(e){ console.warn('Supabase pull failed, using cache',e); }
     }
     return this;
   },
   async pullFromSupabase(){
-    const [profiles,works,chapters,comments,reviews,likes,follows,shelves,contests,entries,groups]=await Promise.all([
+    const [profiles,works,chapters,comments,reviews,likes,follows,shelves,contests,entries,groups,founderSettings]=await Promise.all([
       sbFetch('/rest/v1/profiles?select=*&order=created_at.asc').catch(()=>[]),
       sbFetch('/rest/v1/works?select=*&order=updated_at.desc').catch(()=>[]),
       sbFetch('/rest/v1/chapters?select=*&order=sort_order.asc').catch(()=>[]),
@@ -140,9 +148,10 @@ const Store={
       sbFetch('/rest/v1/likes?select=*').catch(()=>[]),
       sbFetch('/rest/v1/follows?select=*').catch(()=>[]),
       this.session?sbFetch('/rest/v1/shelves?select=*').catch(()=>[]):Promise.resolve([]),
-      sbFetch('/rest/v1/contests?select=*&order=deadline.asc').catch(()=>[]),
-      sbFetch('/rest/v1/contest_entries?select=*').catch(()=>[]),
-      sbFetch('/rest/v1/work_groups?select=*&order=created_at.asc').catch(()=>null)
+      Promise.resolve([]),
+      Promise.resolve([]),
+      sbFetch('/rest/v1/work_groups?select=*&order=created_at.asc').catch(()=>null),
+      sbFetch('/rest/v1/founder_work_settings?select=*').catch(()=>[])
     ]);
     { // Supabase — источник правды (даже если база пока пустая)
       this.state.authors=profiles.map(mapProfile);
@@ -156,10 +165,11 @@ const Store={
       if(contests.length) this.state.contests=contests.map(r=>({id:r.id,title:r.title,theme:r.theme,description:r.description||'',prize:r.prize||'',deadline:r.deadline,status:r.status}));
       this.state.contestEntries=entries.map(r=>({id:r.id,contestId:r.contest_id,workId:r.work_id,userId:r.user_id,createdAt:(r.created_at||'').slice(0,10)}));
       injectFounder(this.state);
+      founderSettings.forEach(r=>{const w=this.state.works.find(w=>w.id===r.work_id&&w.authorId===r.author_id);if(w){const mapped=mapWork({...r.settings,id:w.id,author_id:w.authorId,legacy_url:w.legacyUrl,views:w.views,created_at:w.createdAt,updated_at:w.updatedAt});Object.assign(w,mapped);}});
       // null означает недоступную таблицу, а [] — действительно пустой список.
       if(groups!==null){
         this.state.groups=groups.filter(r=>!r.deleted).map(r=>({id:r.id,authorId:r.author_id,title:r.title,kind:r.kind,description:r.description||'',workIds:r.work_ids||[]}));
-        const founder=this.state.authors.find(a=>a.username==='cnizroman');
+        const founder=this.state.authors.find(a=>a.username==='cnizroman'&&(a.founder||a.id==='cnizroman'));
         // Встроенный цикл показывается, пока автор не сохранил свою версию.
         for(const g of window.CHERNILA_SEED.groups||[])
           if(!groups.some(x=>x.id===g.id)) this.state.groups.push({...clone(g),authorId:founder.id});
@@ -173,13 +183,13 @@ const Store={
   push(promise){ if(this.mode==='supabase'){ Promise.resolve(promise).catch(e=>console.warn('Supabase write:',e.message)); } else { Promise.resolve(promise).catch(()=>{}); } },
 
   /* ---------- Сессия / аккаунты ---------- */
-  currentUser(){ if(!this.session) return null; return this.state.authors.find(a=>a.id===this.session.authorId)||null; },
+  currentUser(){ if(!this.session||(this.mode==='supabase'&&!this.session.token)) return null; return this.state.authors.find(a=>a.id===this.session.authorId)||null; },
   setSession(s){ this.session=s; if(s){localStorage.setItem(LS_SESSION,JSON.stringify(s)); sbToken=s.token||null;} else {localStorage.removeItem(LS_SESSION); sbToken=null;} },
 
   async signup({username,displayName,email,password}){
     username=(username||'').trim().toLowerCase().replace(/[^a-z0-9_]/g,'');
-    if(username.length<3) throw new Error('Логин: минимум 3 символа, только латиница, цифры и подчёркивание.');
-    if(this.state.authors.some(a=>a.username===username)) throw new Error('Такой логин уже занят.');
+    if(username.length<3||username.length>30) throw new Error('Логин: от 3 до 30 символов, только латиница, цифры и подчёркивание.');
+    if(this.state.authors.some(a=>a.username===username&&!(this.mode==='supabase'&&a.id==='cnizroman'))) throw new Error('Такой логин уже занят.');
     if(!/.+@.+\..+/.test(email||'')) throw new Error('Укажите корректный email.');
     if((password||'').length<6) throw new Error('Пароль: минимум 6 символов.');
     if(this.mode==='supabase'){
@@ -195,7 +205,7 @@ const Store={
       let author=null;
       try{ const rows=await sbFetch('/rest/v1/profiles?id=eq.'+authId+'&select=*'); if(rows&&rows[0]) author=mapProfile(rows[0]); }catch(e){}
       if(!author){
-        author={id:authId,username,displayName:displayName||username,bio:'',motto:'',location:'',hue:Math.floor(Math.random()*360),role:username==='cnizroman'?'admin':'author',founder:username==='cnizroman',joinedAt:today(),badges:['Новый автор']};
+        author={id:authId,username,displayName:displayName||username,bio:'',motto:'',location:'',hue:Math.floor(Math.random()*360),role:'author',founder:false,joinedAt:today(),badges:['Новый автор']};
         try{ await sbFetch('/rest/v1/profiles',{method:'POST',body:JSON.stringify({id:authId,username,display_name:author.displayName,avatar_hue:author.hue,badges:author.badges})}); }catch(e){}
       }
       adoptFounderIdentity(this.state, author);
@@ -211,8 +221,15 @@ const Store={
   },
   async login({login,password}){
     login=(login||'').trim().toLowerCase();
-    if(this.mode==='supabase' && /.+@.+\..+/.test(login)){
-      const data=await sbFetch('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email:login,password})});
+    if(this.mode==='supabase'){
+      let data;
+      if(/.+@.+\..+/.test(login)) data=await sbFetch('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email:login,password})});
+      else {
+        try{data=await sbFetch('/functions/v1/username-login',{method:'POST',body:JSON.stringify({username:login,password})});}
+        catch(e){throw new Error('Вход по юзернейму не выполнен. Проверьте данные; если функция username-login ещё не подключена, войдите по email.');}
+      }
+      if(!data.access_token||!data.user)throw new Error('Не удалось войти.');
+      this.setSession({authorId:data.user.id,token:data.access_token,email:data.user.email||login});
       sbToken=data.access_token;
       await this.pullFromSupabase();
       let me=this.state.authors.find(a=>a.id===data.user.id);
@@ -223,7 +240,7 @@ const Store={
         this.state.authors.push(me); this.save();
       }
       adoptFounderIdentity(this.state, me); this.save();
-      this.setSession({authorId:me.id,token:data.access_token,email:login});
+      this.setSession({authorId:me.id,token:data.access_token,email:data.user.email||login});
       return me;
     }
     // локальный вход: логин или email + пароль (демо-аккаунты: username / demo1234)
@@ -234,40 +251,71 @@ const Store={
     return this.currentUser();
   },
   logout(){ this.setSession(null); },
-  updateProfile(patch){
-    const me=this.currentUser(); if(!me) return;
-    Object.assign(me,patch); this.save();
-    this.push(sbFetch('/rest/v1/profiles?id=eq.'+me.id,{method:'PATCH',body:JSON.stringify({display_name:me.displayName,bio:me.bio,motto:me.motto,location:me.location,avatar_hue:me.hue})}));
+  async updateProfile(patch){
+    const me=this.currentUser();if(!me)throw new Error('Войдите в аккаунт.');
+    const next={displayName:String(patch.displayName??me.displayName).trim(),bio:String(patch.bio??me.bio??'').trim(),motto:String(patch.motto??me.motto??'').trim(),location:String(patch.location??me.location??'').trim(),hue:Math.min(360,Math.max(0,Number(patch.hue??me.hue)||0)),customization:cleanCustomization(patch.customization??me.customization??{})};
+    if(!next.displayName||next.displayName.length>80||next.bio.length>1200||next.motto.length>160||next.location.length>80)throw new Error('Проверьте имя и длину полей профиля.');
+    if(this.mode==='supabase')await sbFetch('/rest/v1/profiles?id=eq.'+me.id,{method:'PATCH',body:JSON.stringify({display_name:next.displayName,bio:next.bio,motto:next.motto,location:next.location,avatar_hue:next.hue,customization:next.customization})});
+    Object.assign(me,next);this.save();return me;
   },
-
+  async setFeatured(id,featured){
+    if(this.currentUser()?.role!=='admin')throw new Error('Только администратор.');
+    const w=this.state.works.find(w=>w.id===id);if(!w)throw new Error('Произведение не найдено.');
+    if(this.mode==='supabase'){
+      if(w.legacyUrl)await sbFetch('/rest/v1/founder_work_settings?on_conflict=work_id',{method:'POST',headers:sbHeaders({'Prefer':'resolution=merge-duplicates,return=representation'}),body:JSON.stringify({work_id:id,author_id:w.authorId,settings:{title:w.title,subtitle:w.subtitle,type:w.type,genre:w.genre,tags:w.tags,description:w.description,status:w.status,age_rating:w.ageRating,cover:w.cover,featured}})});
+      else await sbFetch('/rest/v1/works?id=eq.'+id,{method:'PATCH',body:JSON.stringify({featured})});
+    }
+    w.featured=!!featured;this.save();
+  },
+  async setBadges(authorId,badges){
+    if(this.currentUser()?.role!=='admin')throw new Error('Только администратор может выдавать достижения.');
+    const target=this.state.authors.find(a=>a.id===authorId);if(!target)throw new Error('Автор не найден.');
+    badges=[...new Set(badges.map(b=>String(b).trim()).filter(Boolean))];
+    if(badges.length>30||badges.some(b=>b.length>80))throw new Error('Не более 30 значков, название — до 80 символов.');
+    if(this.mode==='supabase')await sbFetch('/rest/v1/profiles?id=eq.'+encodeURIComponent(authorId),{method:'PATCH',body:JSON.stringify({badges})});
+    target.badges=badges;this.save();return target;
+  },
+  assertOwnWork(id){
+    const user=this.currentUser(),w=this.state.works.find(w=>w.id===id);
+    if(!user||!w||w.authorId!==user.id)throw new Error('Это произведение принадлежит другому автору.');return w;
+  },
   /* ---------- Произведения и главы ---------- */
-  upsertWork(w){
+  async upsertWork(w){
     const ex=this.state.works.find(x=>x.id===w.id);
-    w.updatedAt=today();
-    if(ex) Object.assign(ex,w); else this.state.works.unshift(w);
-    this.save();
+    const user=this.currentUser();
+    if(!user||w.authorId!==user.id||(ex&&ex.authorId!==user.id))throw new Error('Можно редактировать только свои произведения.');
+    if(!String(w.title||'').trim())throw new Error('Укажите название.');
+    w={...w,legacyUrl:safeLegacyUrl(w.id,w.legacyUrl),featured:user.role==='admin'?!!w.featured:!!ex?.featured,updatedAt:today()};
     const row={id:/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(w.id)?w.id:undefined,author_id:w.authorId,title:w.title,subtitle:w.subtitle,type:w.type,genre:w.genre,tags:w.tags,description:w.description,status:w.status,age_rating:w.ageRating,legacy_url:w.legacyUrl,featured:w.featured,cover:w.cover};
-    if(ex) this.push(sbFetch('/rest/v1/works?id=eq.'+w.id,{method:'PATCH',body:JSON.stringify(row)}));
-    else this.push(sbFetch('/rest/v1/works',{method:'POST',body:JSON.stringify(row)}));
-    return w;
+    if(this.mode==='supabase'){
+      if(w.legacyUrl) await sbFetch('/rest/v1/founder_work_settings?on_conflict=work_id',{method:'POST',headers:sbHeaders({'Prefer':'resolution=merge-duplicates,return=representation'}),body:JSON.stringify({work_id:w.id,author_id:user.id,settings:row})});
+      else if(ex)await sbFetch('/rest/v1/works?id=eq.'+w.id,{method:'PATCH',body:JSON.stringify(row)});
+      else await sbFetch('/rest/v1/works',{method:'POST',body:JSON.stringify(row)});
+    }
+    if(ex)Object.assign(ex,w);else this.state.works.unshift(w);this.save();return w;
   },
-  deleteWork(id){
+  async deleteWork(id){
+    const w=this.state.works.find(w=>w.id===id),u=this.currentUser();
+    if(!u||!w||(u.id!==w.authorId&&u.role!=='admin'))throw new Error('Нет доступа к удалению.');
+    if(w.legacyUrl)throw new Error('Встроенные тексты удаляются из исходников проекта, не из мастерской.');
+    if(this.mode==='supabase')await sbFetch('/rest/v1/works?id=eq.'+id,{method:'DELETE'});
     this.state.groups.forEach(g=>{g.workIds=g.workIds.filter(wid=>wid!==id);});
     this.state.works=this.state.works.filter(w=>w.id!==id);
     this.state.chapters=this.state.chapters.filter(c=>c.workId!==id);
-    this.save(); this.push(sbFetch('/rest/v1/works?id=eq.'+id,{method:'DELETE'}));
-  },
-  upsertChapter(c){
-    const ex=this.state.chapters.find(x=>x.id===c.id);
-    if(ex) Object.assign(ex,c); else this.state.chapters.push(c);
-    const w=this.state.works.find(x=>x.id===c.workId); if(w) w.updatedAt=today();
     this.save();
-    const row={id:/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(c.id)?c.id:undefined,work_id:c.workId,title:c.title,body:c.body,sort_order:c.order,status:c.status};
-    if(ex) this.push(sbFetch('/rest/v1/chapters?id=eq.'+c.id,{method:'PATCH',body:JSON.stringify(row)}));
-    else this.push(sbFetch('/rest/v1/chapters',{method:'POST',body:JSON.stringify(row)}));
-    return c;
   },
-  deleteChapter(id){ this.state.chapters=this.state.chapters.filter(c=>c.id!==id); this.save(); this.push(sbFetch('/rest/v1/chapters?id=eq.'+id,{method:'DELETE'})); },
+  async upsertChapter(c){
+    const owner=this.assertOwnWork(c.workId);
+    if(owner.legacyUrl)throw new Error('Это исходный авторский текст. Его главы редактируются в HTML-файле проекта.');
+    const ex=this.state.chapters.find(x=>x.id===c.id);
+    if(ex&&ex.workId!==c.workId)throw new Error('Нельзя перенести чужую главу.');
+    if(!String(c.title||'').trim()||c.title.length>160||!String(c.body||'').trim()||c.body.length>400000||!['draft','published'].includes(c.status))throw new Error('Проверьте заголовок, текст и статус главы.');
+    const w=this.state.works.find(x=>x.id===c.workId);
+    const row={id:/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(c.id)?c.id:undefined,work_id:c.workId,title:c.title,body:c.body,sort_order:c.order,status:c.status};
+    if(this.mode==='supabase'){if(ex)await sbFetch('/rest/v1/chapters?id=eq.'+c.id,{method:'PATCH',body:JSON.stringify(row)});else await sbFetch('/rest/v1/chapters',{method:'POST',body:JSON.stringify(row)});}
+    if(w)w.updatedAt=today();if(ex)Object.assign(ex,c);else this.state.chapters.push(c);this.save();return c;
+  },
+  async deleteChapter(id){ const c=this.state.chapters.find(x=>x.id===id);if(!c)throw new Error('Глава не найдена.');this.assertOwnWork(c.workId);if(this.mode==='supabase')await sbFetch('/rest/v1/chapters?id=eq.'+id,{method:'DELETE'});this.state.chapters=this.state.chapters.filter(c=>c.id!==id); this.save(); },
   addView(workId){ const w=this.state.works.find(x=>x.id===workId); if(w){w.views=(w.views||0)+1; this.save(); this.push(sbFetch('/rest/v1/rpc/increment_work_views',{method:'POST',body:JSON.stringify({p_work_id:workId})}));} },
 
   /* ---------- Циклы / группы (порядок хранится в workIds) ---------- */

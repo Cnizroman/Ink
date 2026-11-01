@@ -260,22 +260,7 @@ select w.id as work_id, count(r.id) as reviews_count,
 from public.works w left join public.work_reviews r on r.work_id = w.id
 group by w.id;
 
--- ---------- Стартовые конкурсы ----------
-insert into public.contests (title, theme, description, prize, deadline, status) values
-('«Первая строка»','Рассказ, который начинается со слов «Никто не вспомнит…»','Конкурс открытия платформы. Один рассказ до 15 000 знаков в любом жанре.','Публикация на главной, значок победителя и редакторский разбор','2026-12-15','open'),
-('«Ночной сад» · Поэзия','Цикл из 3–5 стихотворений о ночи','Присылайте цикл, а не отдельные тексты.','Значок «Поэт конкурса» и главная страница','2027-01-20','open'),
-('«Городские легенды»','Хоррор и мистика вашего района','Лифты, подъезды, остановки и дворы.','Сборник лучших работ на платформе','2027-02-28','soon')
-on conflict do nothing;
-
-
--- ============================================================
--- АВТОМАТИКА: владельцу больше НИЧЕГО настраивать не нужно.
--- 1) Профиль автора создаётся сам при регистрации.
--- 2) Email подтверждается сам (письмо ждать не надо).
--- 3) Аккаунт с логином cnizroman автоматически становится
---    основателем и администратором платформы.
--- 4) Книги основателя встроены в сайт и в базу не вносятся.
--- ============================================================
+-- Профили создаются без привилегий. Основателя назначает владелец в SQL Editor.
 create or replace function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare v_username text; v_name text;
@@ -290,11 +275,7 @@ begin
   insert into public.profiles (id, username, display_name, role, is_founder, badges)
   values (
     new.id, v_username, v_name,
-    case when v_username = 'cnizroman' then 'admin' else 'author' end,
-    (v_username = 'cnizroman'),
-    case when v_username = 'cnizroman'
-         then array['Основатель платформы','Первый автор']
-         else array['Новый автор'] end
+    'author', false, array['Новый автор']
   )
   on conflict (id) do nothing;
   return new;
@@ -316,13 +297,7 @@ create trigger on_auth_user_auto_confirm after insert on auth.users
   for each row execute function public.auto_confirm_new_user();
 
 -- ============================================================
--- ПОСЛЕ ЗАПУСКА:
--- Больше ничего делать не нужно. Просто откройте сайт и
--- зарегистрируйтесь с логином cnizroman — профиль основателя,
--- админка и значки выдадутся автоматически, подтверждение
--- почты не потребуется, а книги первого автора уже встроены
--- в платформу. Файл можно запускать повторно — он идемпотентен.
--- ============================================================
+-- После запуска: назначьте свой UUID основателем по ADMIN_SETUP.md.
 
 -- ---------- Циклы и группы произведений (обновление каталога v3) ----------
 -- text[] нужен и для UUID новых работ, и для slug встроенных книг.
@@ -356,7 +331,7 @@ create or replace function public.validate_work_group() returns trigger
 language plpgsql set search_path = public as $$
 declare member_id text; founder boolean;
 begin
-  select exists(select 1 from public.profiles where id = new.author_id and username = 'cnizroman') into founder;
+  select exists(select 1 from public.profiles where id = new.author_id and username = 'cnizroman' and is_founder) into founder;
   if new.id = 'nikto-ne-vspomnit' and not founder then
     raise exception 'Встроенный цикл принадлежит основателю';
   end if;
@@ -389,3 +364,77 @@ $$;
 drop trigger if exists works_group_cleanup on public.works;
 create trigger works_group_cleanup after delete on public.works
   for each row execute function public.remove_deleted_work_from_groups();
+
+-- ---------- Профили, привилегии и карточки основателя (v4) ----------
+alter table public.profiles alter column badges set default array['Новый автор']::text[];
+alter table public.profiles add column if not exists customization jsonb not null default '{}';
+alter table public.profiles drop constraint if exists profiles_customization_size;
+alter table public.profiles add constraint profiles_customization_size check (
+  jsonb_typeof(customization) = 'object' and octet_length(customization::text) <= 16000
+);
+
+-- RLS разрешает обновлять строку профиля, но не выдавать себе права/значки.
+create or replace function public.protect_profile_privileges() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if auth.uid() is not null then
+    if tg_op = 'INSERT' then
+      if new.role <> 'author' or new.is_founder or new.badges <> array['Новый автор']::text[] then
+        raise exception 'Привилегии аккаунта назначает только владелец платформы';
+      end if;
+    else
+      if new.role is distinct from old.role or new.is_founder is distinct from old.is_founder
+         or new.username is distinct from old.username then
+        raise exception 'Роль, статус основателя и юзернейм нельзя менять из браузера';
+      end if;
+      if new.badges is distinct from old.badges and not public.is_platform_admin() then
+        raise exception 'Значки выдаёт только администратор';
+      end if;
+    end if;
+  end if;
+  if cardinality(new.badges) > 30 or exists(select 1 from unnest(new.badges) b where length(b) > 80 or length(trim(b)) = 0) then
+    raise exception 'Недопустимый список значков';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists profiles_protect_privileges on public.profiles;
+create trigger profiles_protect_privileges before insert or update on public.profiles
+  for each row execute function public.protect_profile_privileges();
+
+-- Встроенные книги имеют slug, а новые произведения — UUID. Не дублируем
+-- исходные тексты: отдельно сохраняем только изменяемые карточки основателя.
+create table if not exists public.founder_work_settings (
+  work_id text primary key check (work_id in ('ne-s-nachala','doroga-iz-holoda','spasatelny-krug','gde-nas-net','sem-dney','belaya-golova')),
+  author_id uuid not null references public.profiles(id) on delete cascade,
+  settings jsonb not null default '{}' check (jsonb_typeof(settings) = 'object' and octet_length(settings::text) <= 20000)
+);
+alter table public.founder_work_settings enable row level security;
+drop policy if exists founder_work_settings_read on public.founder_work_settings;
+create policy founder_work_settings_read on public.founder_work_settings for select to anon, authenticated using (true);
+drop policy if exists founder_work_settings_write on public.founder_work_settings;
+create policy founder_work_settings_write on public.founder_work_settings for all to authenticated
+  using (author_id = auth.uid() and exists(select 1 from public.profiles p where p.id=auth.uid() and p.is_founder and p.username='cnizroman'))
+  with check (author_id = auth.uid() and exists(select 1 from public.profiles p where p.id=auth.uid() and p.is_founder and p.username='cnizroman'));
+grant select on public.founder_work_settings to anon, authenticated;
+grant insert, update, delete on public.founder_work_settings to authenticated;
+
+create or replace function public.protect_work_ownership() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if auth.uid() is not null then
+    if tg_op = 'UPDATE' and new.author_id is distinct from old.author_id then
+      raise exception 'Нельзя перепривязать произведение другому аккаунту';
+    end if;
+    if not public.is_platform_admin() then
+      if (tg_op = 'INSERT' and new.featured) or (tg_op = 'UPDATE' and new.featured is distinct from old.featured) then
+        raise exception 'Выбор платформы назначает администратор';
+      end if;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists works_protect_ownership on public.works;
+create trigger works_protect_ownership before insert or update on public.works
+  for each row execute function public.protect_work_ownership();

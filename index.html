@@ -6,12 +6,12 @@
 <meta name="theme-color" content="#0a0908">
 <meta name="color-scheme" content="dark">
 <title>Чернила — платформа для авторов: рассказы, романы, стихотворения</title>
-<meta name="description" content="«Чернила» — тёмная литературная платформа для всех авторов. Публикуйте рассказы, романы, повести и стихотворения, находите читателей, получайте рецензии по пяти критериям и участвуйте в конкурсах. Первый автор платформы — Cnizroman с тетралогией «Никто не вспомнит».">
+<meta name="description" content="«Чернила» — тёмная литературная платформа для всех авторов. Публикуйте рассказы, романы, повести и стихотворения, находите читателей, получайте рецензии по пяти критериям. Первый автор платформы — Cnizroman с тетралогией «Никто не вспомнит».">
 <link rel="canonical" href="https://cnizroman.github.io/Nobody-came/">
 <meta property="og:type" content="website"><meta property="og:locale" content="ru_RU">
 <meta property="og:site_name" content="Чернила">
 <meta property="og:title" content="Чернила — платформа для авторов">
-<meta property="og:description" content="Место, где истории находят читателей, а авторы — друг друга. Рассказы, романы, стихи, конкурсы и честные рецензии.">
+<meta property="og:description" content="Место, где истории находят читателей, а авторы — друг друга. Рассказы, романы, стихи и честные рецензии.">
 <meta property="og:image" content="https://cnizroman.github.io/Nobody-came/assets/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0908'/%3E%3Cpath d='M32 10c7 10 12 16.5 12 24a12 12 0 1 1-24 0c0-7.5 5-14 12-24z' fill='none' stroke='%23c8a96e' stroke-width='3'/%3E%3Ccircle cx='32' cy='38' r='4' fill='%23c8a96e'/%3E%3C/svg%3E">
@@ -23,6 +23,8 @@
 <script src="supabase-config.js"></script>
 <script src="data.js" defer></script>
 <script src="store.js" defer></script>
+<script src="text-format.js" defer></script>
+<script src="writer.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
@@ -36,7 +38,6 @@
       <a href="#/" data-nav="home">Главная</a>
       <a href="#/catalog" data-nav="catalog">Каталог</a>
       <a href="#/authors" data-nav="authors">Авторы</a>
-      <a href="#/contests" data-nav="contests">Конкурсы</a>
       <a href="#/feed" data-nav="feed">Лента</a>
       <a href="#/library" data-nav="library">Моя полка</a>
       <a href="#/studio" data-nav="studio">Студия автора</a>
@@ -48,7 +49,7 @@
     <div class="userchip" id="userChip"></div>
   </div>
   <div class="mode-banner" id="modeBanner" hidden>
-    <div class="wrap"><span>● Локальный режим: данные пока хранятся в браузере каждого посетителя. Владельцу платформы осталось <a href="#/setup"><b>одно действие</b></a>, чтобы включить общую базу для всех.</span><span style="margin-left:auto">Вход основателя: <b>cnizroman</b> · <b>demo1234</b></span></div>
+    <div class="wrap"><span>● Локальный режим: данные пока хранятся в браузере каждого посетителя. Для общей базы нужна <a href="#/setup"><b>настройка владельца</b></a>.</span><span style="margin-left:auto">Локальный тестовый вход: <b>cnizroman</b> · <b>demo1234</b></span></div>
   </div>
 </header>
 
@@ -71,8 +72,7 @@
       <a href="#/catalog?type=story">Рассказы</a><a href="#/catalog?type=novel">Романы</a><a href="#/feed">Лента обновлений</a>
     </nav></div>
     <div><h4>Авторам</h4><nav>
-      <a href="#/studio">Студия автора</a><a href="#/studio/new">Опубликовать произведение</a>
-      <a href="#/contests">Конкурсы</a><a href="#/authors">Сообщество авторов</a><a href="#/about">Как устроена платформа</a><a href="#/setup">Запуск общей базы</a>
+      <a href="#/studio">Студия автора</a><a href="#/studio/new">Опубликовать произведение</a><a href="#/authors">Сообщество авторов</a><a href="#/about">Как устроена платформа</a><a href="#/setup">Запуск общей базы</a>
     </nav></div>
     <div><h4>Первый автор</h4><nav>
       <a href="#/author/cnizroman">Cnizroman и его книги</a>
