@@ -234,3 +234,8 @@ test('expired-session requests share one refresh and never adopt another account
  const {store}=harness({remote});await store.init();store.state.authors.push({id:'writer',username:'writer'});store.setSession({authorId:'writer',token:'expired',refreshToken:'refresh',expiresAt:1});await Promise.all([store.socialIdentities(),store.socialIdentities()]);assert.equal(refreshCount,1);assert.equal(store.session.authorId,'writer');
  wrong=true;store.setSession({authorId:'writer',token:'expired',refreshToken:'refresh',expiresAt:1});await assert.rejects(store.socialIdentities());assert.equal(store.session,null);
 });
+
+
+test('regular email confirmation is not misreported as a failed social connection',async()=>{
+ const {store,ctx,ephemeral}=harness({remote:async()=>({ok:true,text:async()=>JSON.stringify([])})});await store.init();let clean='';ctx.history={replaceState:(_,__,url)=>clean=url};ctx.location.href='https://site.test/Ink/#access_token=confirmation-token';await store.completeSocialReturn();assert.equal(clean,'/Ink/#/auth');assert.equal(ephemeral.get('chernila_social_result'),undefined);assert.equal(store.session,null);
+});

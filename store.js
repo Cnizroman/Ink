@@ -243,7 +243,7 @@ const Store={
       if(/.+@.+\..+/.test(login)) data=await sbFetch('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email:login,password})});
       else {
         try{data=await sbFetch('/functions/v1/username-login',{method:'POST',body:JSON.stringify({username:login,password})});}
-        catch(e){throw new Error('Вход по юзернейму не выполнен. Проверьте данные; если функция username-login ещё не подключена, войдите по email.');}
+        catch(e){if(e.status===429)throw new Error('Слишком много попыток входа. Подождите и попробуйте снова.');if(e.status===503)throw new Error('Сервис входа временно недоступен. Попробуйте позже.');if(e.status===401)throw new Error('Неверный логин или пароль.');throw new Error('Вход по юзернейму не выполнен. Проверьте данные; если функция username-login ещё не подключена, войдите по email.');}
       }
       if(!data.access_token||!data.user)throw new Error('Не удалось войти.');
       this.setSession({authorId:data.user.id,token:data.access_token,refreshToken:data.refresh_token,email:data.user.email||login});
@@ -315,7 +315,7 @@ const Store={
     let pending=null;try{pending=JSON.parse(sessionStorage.getItem('chernila_social_pending')||'null');}catch(_){}
     // Remove credentials from the browser address immediately, before requests or rendering.
     const nonce=url.searchParams.get('ink_social'),providerError=url.searchParams.has('error')||hash.has('error');for(const key of ['ink_social','error','error_code','error_description','access_token','refresh_token','id_token','code'])url.searchParams.delete(key);
-    const socialReturn=!!nonce||!!pending;history.replaceState(null,'',url.pathname+url.search+(socialReturn?'#/profile':'#/login'));
+    const socialReturn=!!nonce||!!pending;history.replaceState(null,'',url.pathname+url.search+(socialReturn?'#/profile':'#/auth'));
     if(!socialReturn)return; // A regular email-confirmation return is not a social-link failure.
     try{
       if(!pending||pending.nonce!==nonce||!Number.isFinite(pending.expires)||pending.expires<Date.now()||pending.authorId!==this.session?.authorId)throw new Error('Подключение не подтверждено: начните его заново из своего профиля.');

@@ -2,7 +2,7 @@ process.chdir(require('node:path').resolve(__dirname,'..'));
 const {PGlite}=require('@electric-sql/pglite');const fs=require('node:fs');const assert=require('node:assert/strict');
 (async()=>{
 const db=new PGlite();
-await db.exec(`create role anon;create role authenticated;create schema auth;
+await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;
 create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;
 create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb default '{}',email_confirmed_at timestamptz,updated_at timestamptz);
 create function public.legacy_auto_confirm() returns trigger language plpgsql as $$begin new.email_confirmed_at=now();return new;end$$;
@@ -31,6 +31,7 @@ await db.exec(`select set_config('test.uid','${owner}',false);delete from storag
 assert.equal((await db.query('select count(*)::int as n from storage.objects')).rows[0].n,1);
 await db.exec(`select set_config('test.uid','${writer}',false);delete from storage.objects where name like '${writer}/%';`);
 assert.equal((await db.query('select count(*)::int as n from storage.objects')).rows[0].n,0);
+await assert.rejects(db.query("select public.consume_username_login_attempt(repeat('a',64),2,60)"),/permission denied/);
 await assert.rejects(db.exec(`update profiles set role='admin' where id='${writer}'`),/Роль/);
 await assert.rejects(db.exec(`update profiles set is_founder=true where id='${writer}'`),/Роль/);
 await assert.rejects(db.exec(`update profiles set badges=array['Сам себе наградил'] where id='${writer}'`),/Значки/);
@@ -45,5 +46,8 @@ assert.deepEqual((await db.query(`select badges from profiles where id='${writer
 await db.exec(`insert into founder_work_settings values('sem-dney','${owner}','{"title":"7 Дней"}');`);
 await db.exec(`select set_config('test.uid','${writer}',false);`);
 await assert.rejects(db.exec(`insert into founder_work_settings values('belaya-golova','${writer}','{}')`),/row-level security/);
+await db.exec('reset role;set role service_role');
+for(const allowed of [true,true,false])assert.equal((await db.query("select public.consume_username_login_attempt(repeat('a',64),2,60) as allowed")).rows[0].allowed,allowed);
+await assert.rejects(db.query('select * from public.username_login_limits'),/permission denied/);
 await db.close();console.log('PASS full schema twice; no username auto-admin, profile role/founder/badge escalation rejected, admin awards, owner customization, real work membership, deletion cleanup, founder card RLS; Storage bucket limit and owner-only insert/delete');
 })().catch(e=>{console.error(e);process.exit(1)});
