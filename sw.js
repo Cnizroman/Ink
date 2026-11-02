@@ -1,7 +1,7 @@
 /* Чернила — офлайн-чтение. Стратегия «сначала сеть, потом кеш»:
    онлайн всегда свежая версия, офлайн — посещённые страницы.
    Чтобы сбросить кеш у всех, увеличь номер в CACHE. */
-const CACHE = 'chernila-v16';
+const CACHE = 'chernila-v17';
 const CORE = ['./', 'index.html', 'app.css', 'app.js', 'text-format.js', 'story-tools.js', 'visual-editor.js', 'writer.js', 'workshop-tools.js', 'profile-tools.js', 'theme-tools.js', 'data.js', 'store.js', 'supabase-config.js', 'manifest.webmanifest', 'style.css', 'script.js', 'visuals.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).catch(()=>{}).then(()=>self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())); });
