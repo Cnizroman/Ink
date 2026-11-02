@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node --test tests/*.test.cjs",
     "test:sql": "node tests/schema.cjs && node tests/moderation-schema.cjs && node tests/story-security.cjs",
-    "test:browser": "node tests/browser.cjs && node tests/cloud-profile.cjs && node tests/browser-auth.cjs && node tests/browser-oauth.cjs && node tests/browser-story-studio.cjs"
+    "test:browser": "node tests/browser.cjs && node tests/cloud-profile.cjs && node tests/browser-auth.cjs && node tests/browser-oauth.cjs && node tests/browser-story-studio.cjs",
+    "assets:social-card": "node scripts/render-social-card.cjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.14",
