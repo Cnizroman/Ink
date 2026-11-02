@@ -24,6 +24,7 @@ function probeRequests(clientId='9174402790',callback=CALLBACK){
  result.push({label:'control_unescaped_callback',url:base.href.replace(encodeURIComponent(callback),callback)});
  const doubleEncoded=new URL(base);doubleEncoded.searchParams.set('redirect_uri',encodeURIComponent(callback));result.push({label:'control_double_encoded_callback',url:doubleEncoded.href});
  const websiteRoot=new URL(base);websiteRoot.searchParams.set('redirect_uri','https://cnizroman.github.io/');result.push({label:'control_website_origin_callback_not_a_link_flow',url:websiteRoot.href});
+ for(const [label,callbackUrl] of [['control_website_path_callback_not_a_link_flow','https://cnizroman.github.io/Ink/'],['control_supabase_origin_callback_not_a_link_flow',new URL(callback).origin+'/']]){const other=new URL(base);other.searchParams.set('redirect_uri',callbackUrl);result.push({label,url:other.href});}
  result.push({label:'control_with_site_referrer',url:base.href,referrer:'https://cnizroman.github.io/'});
  const noClient=new URL(base);noClient.searchParams.delete('client_id');result.push({label:'negative_control_missing_client_id',url:noClient.href});
  return result;
@@ -36,6 +37,7 @@ function summarize(label,status,headers,body){
  const errors=['redirect_uri required','origin required','client_id required','bot_id required','invalid client_id','invalid redirect_uri'];
  const known=errors.find(e=>plain===e);
  report.response_kind=known?'telegram_error':report.content_type==='application/json'?'json_document':report.content_type==='text/html'?'html_document':'unclassified_response';
+ if(!known&&report.content_type==='text/html')report.page_markers={telegram_title:/<title>[^<]*Telegram/i.test(body),phone_field:/name=["']phone|id=["'][^"']*phone/i.test(body),telegram_login_script:/TWidgetLogin|TLogin|telegram-login/i.test(body),oidc_reference:/openid|oidc/i.test(body),legacy_result_reference:/tgAuthResult/i.test(body)};
  if(known)report.error_text=known; // Fixed allowlist only; never log arbitrary response text.
  if(label==='discovery'){
   try{const d=JSON.parse(body);report.expected_issuer=d.issuer===ORIGIN;report.expected_authorization_endpoint=d.authorization_endpoint===ORIGIN+'/auth';report.expected_token_endpoint=d.token_endpoint===ORIGIN+'/token';}catch(_){report.discovery_json_valid=false;}
@@ -65,7 +67,7 @@ async function main(){
  console.log(JSON.stringify(report,null,2));
  // Surface the same sanitized observations through GitHub's Check annotations API.
  // This avoids needing access to the separate Actions log-storage host.
- if(process.env.GITHUB_ACTIONS==='true')for(const r of reports)console.log('::notice title=Telegram HTTP observation::'+JSON.stringify(r).replace(/%/g,'%25').replace(/\r/g,'%0D').replace(/\n/g,'%0A'));
+ if(process.env.GITHUB_ACTIONS==='true')console.log('::notice title=Telegram HTTP observation::'+JSON.stringify({results:reports}).replace(/%/g,'%25').replace(/\r/g,'%0D').replace(/\n/g,'%0A'));
  if(reports.some(r=>r.transport_error))process.exitCode=1;
 }
 module.exports={probeRequests,summarize};

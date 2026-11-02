@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {probeRequests,summarize}=require('../scripts/telegram-oidc-probe.cjs');
 test('anonymous Telegram HTTP probes compare order/encoding without changing callback, state or PKCE',()=>{
- const probes=probeRequests('123456789','https://project.test/auth/v1/callback');assert.equal(probes.length,12);
+ const probes=probeRequests('123456789','https://project.test/auth/v1/callback');assert.equal(probes.length,14);
  const auth=probes.slice(1,6).map(p=>new URL(p.url));
  for(const url of auth){assert.equal(url.origin,'https://oauth.telegram.org');assert.equal(url.pathname,'/auth');assert.equal(url.searchParams.has('client_secret'),false);assert.equal(url.searchParams.get('client_id'),'123456789');assert.equal(url.searchParams.get('response_type'),'code');assert.equal(url.searchParams.get('scope'),'openid profile');assert.equal(url.searchParams.get('state'),auth[0].searchParams.get('state'));assert.equal(url.searchParams.get('code_challenge'),auth[0].searchParams.get('code_challenge'));assert.equal(url.searchParams.get('code_challenge_method'),'S256');}
  for(const url of auth.slice(0,4))assert.equal(url.searchParams.get('redirect_uri'),'https://project.test/auth/v1/callback');
