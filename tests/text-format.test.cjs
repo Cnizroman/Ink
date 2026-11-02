@@ -11,3 +11,10 @@ test('raw HTML and dangerous attributes are escaped inside every block',()=>{
 test('poetry preserves line breaks and blank lines',()=>{
  const html=render('Первая\n\nТретья',true);assert.equal((html.match(/class="line"/g)||[]).length,3);
 });
+test('creative blocks, nested structures and poem line breaks use only safe known markup',()=>{
+ for(const kind of ['scene','letter','document','chat','system','memory','dream','epigraph','poem','warning','choice']){
+  const html=render(`:::${kind} <svg onload=evil()>\nСтрока\n<img src=x onerror=evil()>\n:::`);assert.ok(html.includes('text-'+kind));assert.ok(!/<(?:svg|img)/.test(html));assert.ok(html.includes('&lt;img'));
+ }
+ const nested=render(':::letter Письмо\nПеред\n\n:::note Записка\nВнутри\n:::\n\nПосле\n:::');assert.match(nested,/<aside class="text-letter">/);assert.match(nested,/<aside class="text-note">/);assert.ok(nested.includes('После'));assert.match(render(':::poem\nПервая\n\nТретья\n:::'),/class="line"/);
+ assert.ok(!render((':::dream\n').repeat(100)+'<script>evil()</script>\n'+(':::\n').repeat(100)).includes('<script>'));
+});

@@ -96,7 +96,7 @@ async function probeSupabase(){
 }
 /* Маппинг строк Supabase -> внутренняя модель */
 function mapProfile(r){return {id:r.id,username:r.username,displayName:r.display_name||r.username,bio:r.bio||'',motto:r.motto||'',location:r.location||'',hue:r.avatar_hue??38,role:r.role||'author',founder:!!r.is_founder,joinedAt:(r.created_at||'').slice(0,10),badges:r.badges||[],customization:(()=>{try{return cleanCustomization(r.customization||{})}catch(_){return cleanCustomization()}})()}}
-function mapWork(r){return {id:r.id,authorId:r.author_id,title:r.title,subtitle:r.subtitle||'',type:r.type,genre:r.genre,tags:r.tags||[],description:r.description||'',status:r.status,ageRating:r.age_rating||'12+',legacyUrl:safeLegacyUrl(r.id,r.legacy_url),featured:!!r.featured,moderationStatus:r.moderation_status||'draft',moderationNote:r.moderation_note||'',moderationRevision:Number(r.moderation_revision)||1,submittedAt:r.submitted_at||null,views:r.views||0,cover:r.cover||{from:'#222',to:'#c8a96e',symbol:'✦'},createdAt:(r.created_at||'').slice(0,10),updatedAt:(r.updated_at||'').slice(0,10)}}
+function mapWork(r){return {id:r.id,authorId:r.author_id,readerStyle:window.InkStory?.clean(r.reader_style)||{},passwordProtected:r.password_protected===true,title:r.title,subtitle:r.subtitle||'',type:r.type,genre:r.genre,tags:r.tags||[],description:r.description||'',status:r.status,ageRating:r.age_rating||'12+',legacyUrl:safeLegacyUrl(r.id,r.legacy_url),featured:!!r.featured,moderationStatus:r.moderation_status||'draft',moderationNote:r.moderation_note||'',moderationRevision:Number(r.moderation_revision)||1,submittedAt:r.submitted_at||null,views:r.views||0,cover:r.cover||{from:'#222',to:'#c8a96e',symbol:'✦'},createdAt:(r.created_at||'').slice(0,10),updatedAt:(r.updated_at||'').slice(0,10)}}
 function mapChapter(r){return {id:r.id,workId:r.work_id,title:r.title,body:r.body||'',order:r.sort_order||1,status:r.status||'published',createdAt:(r.created_at||'').slice(0,10)}}
 
 
@@ -132,7 +132,7 @@ function adoptFounderIdentity(state, real){
 
 const Store={
   mode:'local', // 'supabase' | 'local'
-  state:null, session:null,moderationReady:false,
+  state:null, session:null,moderationReady:false,studioReady:false,sessionEpoch:0,unlockedStories:new Map(),
   uid, today,
   cleanCustomization(c){return cleanCustomization(c,this.mode==='local');},
 
@@ -145,6 +145,7 @@ const Store={
     if(ok){
       this.mode='supabase';
       try{this.moderationReady=(await sbFetch('/rest/v1/rpc/moderation_version',{method:'POST',body:'{}'}))===1;}catch(_){this.moderationReady=false;}
+      try{this.studioReady=(await sbFetch('/rest/v1/rpc/story_studio_version',{method:'POST',body:'{}'}))===1;}catch(_){this.studioReady=false;}
       if(this.session&&!this.session.token)this.setSession(null);
       await this.completeSocialReturn();
       try{ await this.pullFromSupabase(); }catch(e){ console.warn('Supabase pull failed, using cache',e); }
@@ -184,7 +185,7 @@ const Store={
       founderSettings.forEach(r=>{const w=this.state.works.find(w=>w.id===r.work_id&&w.authorId===r.author_id);if(w){const mapped=mapWork({...r.settings,id:w.id,author_id:w.authorId,legacy_url:w.legacyUrl,views:w.views,created_at:w.createdAt,updated_at:w.updatedAt});Object.assign(w,mapped);}});
       // null означает недоступную таблицу, а [] — действительно пустой список.
       if(groups!==null){
-        this.state.groups=groups.filter(r=>!r.deleted).map(r=>({id:r.id,authorId:r.author_id,title:r.title,kind:r.kind,description:r.description||'',workIds:r.work_ids||[]}));
+        this.state.groups=groups.filter(r=>!r.deleted).map(r=>({id:r.id,authorId:r.author_id,readerStyle:window.InkStory?.clean(r.reader_style)||{},passwordProtected:r.password_protected===true,title:r.title,kind:r.kind,description:r.description||'',workIds:r.work_ids||[]}));
         const founder=this.state.authors.find(a=>a.username==='cnizroman'&&(a.founder||a.id==='cnizroman'));
         // Встроенный цикл показывается, пока автор не сохранил свою версию.
         for(const g of window.CHERNILA_SEED.groups||[])
@@ -194,13 +195,13 @@ const Store={
       this.save();
     }
   },
-  save(){if(this.mode==='supabase'){const works=this.state.works.filter(w=>this.isWorkPublic(w));saveLocal({...this.state,works,chapters:this.state.chapters.filter(c=>c.status==='published'&&works.some(w=>w.id===c.workId))});}else saveLocal(this.state); },
+  save(){if(this.mode==='supabase'){const works=this.state.works.filter(w=>this.isWorkPublic(w));saveLocal({...this.state,works,chapters:this.state.chapters.filter(c=>c.status==='published'&&works.some(w=>w.id===c.workId&&!w.passwordProtected))});}else saveLocal(this.state); },
   /* фоновая отправка в Supabase (не ломает UI при ошибке) */
   push(promise){ if(this.mode==='supabase'){ Promise.resolve(promise).catch(e=>console.warn('Supabase write:',e.message)); } else { Promise.resolve(promise).catch(()=>{}); } },
 
   /* ---------- Сессия / аккаунты ---------- */
   currentUser(){ if(!this.session||(this.mode==='supabase'&&!this.session.token)) return null; return this.state.authors.find(a=>a.id===this.session.authorId)||null; },
-  setSession(s){ if(s?.token&&!s.expiresAt)s={...s,expiresAt:tokenExpiry(s.token)};this.session=s; if(s){localStorage.setItem(LS_SESSION,JSON.stringify(s)); sbToken=s.token||null;} else {localStorage.removeItem(LS_SESSION); sbToken=null;} },
+  setSession(s){ if(!s||(s.authorId||null)!==(this.session?.authorId||null))this.sessionEpoch++;if(s?.token&&!s.expiresAt)s={...s,expiresAt:tokenExpiry(s.token)};this.session=s; if(s){localStorage.setItem(LS_SESSION,JSON.stringify(s)); sbToken=s.token||null;} else {localStorage.removeItem(LS_SESSION); sbToken=null;} },
 
   async refreshSession(){
     const original=this.session;if(!original?.refreshToken)return;
@@ -280,7 +281,7 @@ const Store={
     this.setSession({authorId:acc.authorId,email:acc.email});
     return this.currentUser();
   },
-  logout(){ this.setSession(null);if(this.mode==='supabase'){this.state.works=this.state.works.filter(w=>this.isWorkPublic(w));this.state.chapters=this.state.chapters.filter(c=>c.status==='published'&&this.state.works.some(w=>w.id===c.workId));this.save();} },
+  logout(){ this.unlockedStories.clear();this.setSession(null);if(this.mode==='supabase'){this.state.works=this.state.works.filter(w=>this.isWorkPublic(w));this.state.chapters=this.state.chapters.filter(c=>c.status==='published'&&this.state.works.some(w=>w.id===c.workId&&!w.passwordProtected));this.save();} },
   async uploadProfileImage(blob,slot){
     const me=this.currentUser();if(!me)throw new Error('Войдите в аккаунт.');
     if(!['avatarUrl','bannerUrl'].includes(slot)||!blob||!['image/png','image/jpeg','image/webp'].includes(blob.type)||!blob.size||blob.size>1024*1024)throw new Error('Недопустимое изображение.');
@@ -416,7 +417,7 @@ const Store={
   },
   /* ---------- Произведения и главы ---------- */
   async upsertWork(w){
-    const ex=this.state.works.find(x=>x.id===w.id);
+    const epoch=this.sessionEpoch;const ex=this.state.works.find(x=>x.id===w.id);
     const user=this.currentUser();
     if(!user||w.authorId!==user.id||(ex&&ex.authorId!==user.id))throw new Error('Можно редактировать только свои произведения.');
     if(!String(w.title||'').trim())throw new Error('Укажите название.');
@@ -424,11 +425,29 @@ const Store={
     w={...w,moderationStatus:user.role==='admin'?'approved':'draft',moderationNote:'',moderationRevision:(ex?.moderationRevision||0)+1,legacyUrl:safeLegacyUrl(w.id,w.legacyUrl),featured:user.role==='admin'?!!w.featured:!!ex?.featured,updatedAt:today()};
     const row={id:/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(w.id)?w.id:undefined,author_id:w.authorId,title:w.title,subtitle:w.subtitle,type:w.type,genre:w.genre,tags:w.tags,description:w.description,status:w.status,age_rating:w.ageRating,legacy_url:w.legacyUrl,featured:w.featured,cover:w.cover};
     if(this.mode==='supabase'){
+      if(this.studioReady&&!w.legacyUrl)row.reader_style=window.InkStory.clean(w.readerStyle||ex?.readerStyle);
+      else if(w.readerStyle&&JSON.stringify(w.readerStyle)!==JSON.stringify(ex?.readerStyle)&&JSON.stringify(w.readerStyle)!=='{}')throw new Error('Для сохранения авторского стиля примените SQL настройки мастерской.');
       let saved;
       if(w.legacyUrl) await sbFetch('/rest/v1/founder_work_settings?on_conflict=work_id',{method:'POST',headers:sbHeaders({'Prefer':'resolution=merge-duplicates,return=representation'}),body:JSON.stringify({work_id:w.id,author_id:user.id,settings:row})});
-      else{saved=ex?await sbFetch('/rest/v1/works?id=eq.'+w.id,{method:'PATCH',body:JSON.stringify(row)}):await sbFetch('/rest/v1/works',{method:'POST',body:JSON.stringify(row)});if(!saved?.[0])throw new Error('Сервер не подтвердил сохранение произведения.');w=mapWork(saved[0]);}
+      else{saved=ex?await sbFetch('/rest/v1/works?id=eq.'+w.id,{method:'PATCH',body:JSON.stringify(row)}):await sbFetch('/rest/v1/works',{method:'POST',body:JSON.stringify(row)});if(!saved?.[0])throw new Error('Сервер не подтвердил сохранение произведения.');if(this.sessionEpoch!==epoch)throw new Error('Аккаунт изменился. Обновите страницу.');w=mapWork(saved[0]);}
     }
-    if(ex)Object.assign(ex,w);else this.state.works.unshift(w);this.save();return w;
+    if(this.sessionEpoch!==epoch)throw new Error('Аккаунт изменился. Обновите страницу.');if(ex)Object.assign(ex,w);else this.state.works.unshift(w);this.save();return w;
+  },
+  canReadStory(w){return !w.passwordProtected||this.currentUser()?.id===w.authorId||this.currentUser()?.role==='admin'||(this.unlockedStories.get(w.id)?.revision===w.moderationRevision&&this.unlockedStories.get(w.id)?.until>Date.now());},
+  async unlockStory(id,password){
+    if(!this.studioReady)throw new Error('Защита историй ещё не подключена к базе.');
+    const epoch=this.sessionEpoch;const data=await sbFetch('/rest/v1/rpc/read_locked_story',{method:'POST',body:JSON.stringify({p_work_id:id,p_password:password})});
+    if(this.sessionEpoch!==epoch)throw new Error('Аккаунт изменился. Откройте историю заново.');
+    if(data?.error)throw new Error(({incorrect_password:'Неверный пароль.',rate_limit:'Слишком много попыток. Попробуйте через 5 минут.',not_found:'История недоступна или ожидает проверки.',not_locked:'Настройки доступа изменились. Обновите страницу.'})[data.error]||'Не удалось открыть историю.');
+    if(!data?.work||data.work.id!==id||!Array.isArray(data.chapters))throw new Error('Сервер не подтвердил доступ.');
+    const w=this.state.works.find(w=>w.id===id);Object.assign(w,mapWork(data.work));this.state.chapters=this.state.chapters.filter(c=>c.workId!==id).concat(data.chapters.map(mapChapter));this.unlockedStories.set(id,{revision:w.moderationRevision,until:Date.now()+15*60*1000});return w;
+  },
+  async setStoryPassword(id,password){
+    const w=this.assertOwnWork(id);if(w.legacyUrl)throw new Error('Пароль исходного HTML-файла меняется отдельно.');
+    if(this.mode!=='supabase'||!this.studioReady)throw new Error('Нужна серверная настройка мастерской. В локальном режиме безопасной парольной защиты нет.');
+    if(password!==null&&([...password].length<8||new TextEncoder().encode(password).length>72))throw new Error('Пароль: минимум 8 символов, не более 72 байт UTF-8.');
+    const epoch=this.sessionEpoch;const data=await sbFetch('/rest/v1/rpc/set_story_password',{method:'POST',body:JSON.stringify({p_work_id:id,p_password:password})});
+    if(this.sessionEpoch!==epoch)throw new Error('Аккаунт изменился. Обновите страницу.');if(!data?.id)throw new Error('Сервер не подтвердил изменение пароля.');Object.assign(w,mapWork(data));this.unlockedStories.delete(id);this.save();return w;
   },
   async deleteWork(id){
     const w=this.state.works.find(w=>w.id===id),u=this.currentUser();
@@ -441,14 +460,14 @@ const Store={
     this.save();
   },
   async upsertChapter(c){
-    const owner=this.assertOwnWork(c.workId);this.requireModeration();
+    const epoch=this.sessionEpoch;const owner=this.assertOwnWork(c.workId);this.requireModeration();
     if(owner.legacyUrl)throw new Error('Это исходный авторский текст. Его главы редактируются в HTML-файле проекта.');
     const ex=this.state.chapters.find(x=>x.id===c.id);
     if(ex&&ex.workId!==c.workId)throw new Error('Нельзя перенести чужую главу.');
     if(!String(c.title||'').trim()||c.title.length>160||!String(c.body||'').trim()||c.body.length>400000||!['draft','published'].includes(c.status))throw new Error('Проверьте заголовок, текст и статус главы.');
     const w=this.state.works.find(x=>x.id===c.workId);
     const row={id:/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(c.id)?c.id:undefined,work_id:c.workId,title:c.title,body:c.body,sort_order:c.order,status:c.status};
-    if(this.mode==='supabase'){const saved=ex?await sbFetch('/rest/v1/chapters?id=eq.'+c.id,{method:'PATCH',body:JSON.stringify(row)}):await sbFetch('/rest/v1/chapters',{method:'POST',body:JSON.stringify(row)});if(!saved?.[0])throw new Error('Сервер не подтвердил сохранение главы.');c=mapChapter(saved[0]);const parents=await sbFetch('/rest/v1/works?id=eq.'+c.workId+'&select=*');if(!parents?.[0])throw new Error('Глава сохранена, но статус проверки не получен. Обновите страницу.');Object.assign(w,mapWork(parents[0]));}
+    if(this.mode==='supabase'){const saved=ex?await sbFetch('/rest/v1/chapters?id=eq.'+c.id,{method:'PATCH',body:JSON.stringify(row)}):await sbFetch('/rest/v1/chapters',{method:'POST',body:JSON.stringify(row)});if(!saved?.[0])throw new Error('Сервер не подтвердил сохранение главы.');if(this.sessionEpoch!==epoch)throw new Error('Аккаунт изменился. Обновите страницу.');c=mapChapter(saved[0]);const parents=await sbFetch('/rest/v1/works?id=eq.'+c.workId+'&select=*');if(!parents?.[0])throw new Error('Глава сохранена, но статус проверки не получен. Обновите страницу.');if(this.sessionEpoch!==epoch)throw new Error('Аккаунт изменился. Обновите страницу.');Object.assign(w,mapWork(parents[0]));}
     else if(w){w.moderationRevision=(w.moderationRevision||1)+1;if(this.currentUser().role==='admin'){w.moderationStatus='approved';}else if(c.status==='published'||ex?.status==='published'){w.moderationStatus=c.status==='published'?'pending':'draft';w.moderationNote='';w.submittedAt=c.status==='published'?new Date().toISOString():null;}}
     if(w)w.updatedAt=today();if(ex)Object.assign(ex,c);else this.state.chapters.push(c);this.save();return c;
   },

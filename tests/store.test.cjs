@@ -9,11 +9,11 @@ function harness({db,storage,remote}={}){
   const values=storage||new Map();
   if(db) values.set('chernila_db_v2',JSON.stringify(db));
   const ephemeral=new Map();
-  const ctx={atob,URL,URLSearchParams,Blob,sessionStorage:{getItem:k=>ephemeral.get(k)||null,setItem:(k,v)=>ephemeral.set(k,v),removeItem:k=>ephemeral.delete(k)},console,crypto:require('node:crypto').webcrypto,localStorage:{getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)},location:{reload(){}},fetch:remote};
+  const ctx={TextEncoder,atob,URL,URLSearchParams,Blob,sessionStorage:{getItem:k=>ephemeral.get(k)||null,setItem:(k,v)=>ephemeral.set(k,v),removeItem:k=>ephemeral.delete(k)},console,crypto:require('node:crypto').webcrypto,localStorage:{getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)},location:{reload(){}},fetch:remote};
   ctx.window=ctx;
   if(remote) ctx.CHERNILA_SUPABASE_CONFIG={url:'https://example.invalid',anonKey:'public'};
   vm.createContext(ctx);
-  for(const file of ['data.js','profile-tools.js','store.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),ctx);
+  for(const file of ['data.js','profile-tools.js','story-tools.js','store.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),ctx);
   return {ctx,store:ctx.Store,storage:values,ephemeral};
 }
 async function founder(store){await store.login({login:'cnizroman',password:'demo1234'});}
@@ -335,4 +335,33 @@ test('cloud moderation uses atomic snapshot and expected revision; failed decisi
  };
  const {store,storage}=harness({remote,storage:new Map([['chernila_session_v2',JSON.stringify({authorId:'admin',token:'fake'})]])});await store.init();assert.equal(store.state.chapters.find(c=>c.id==='chapter').body,'Reviewed snapshot');assert.equal(store.state.works.find(w=>w.id==='story').moderationRevision,4);assert.ok(!storage.get('chernila_db_v2').includes('Reviewed snapshot'));
  await assert.rejects(store.reviewPublication('story',4,'approved'),/изменил текст/);assert.equal(store.state.works.find(w=>w.id==='story').moderationStatus,'pending');assert.equal(decision.p_revision,4);fail=false;await store.reviewPublication('story',4,'approved');assert.equal(store.state.works.find(w=>w.id==='story').moderationStatus,'approved');
+});
+
+test('password unlock is memory-only, excludes bodies from cloud cache, expires and clears on logout/reload',async()=>{
+ const row={id:'locked',author_id:'writer',title:'Protected story',moderation_status:'approved',moderation_revision:4,password_protected:true,reader_style:{palette:'midnight'}},chapter={id:'secret',work_id:'locked',title:'Hidden title',body:'NEVER CACHE THIS BODY',status:'published',sort_order:1};let fail=true;const requests=[];
+ const remote=async(url,opts={})=>{const p=new URL(url).pathname;requests.push({p,opts});let data=[];
+  if(p.endsWith('/moderation_version')||p.endsWith('/story_studio_version'))data=1;
+  if(p.endsWith('/publication_snapshot'))data={works:[row],chapters:[]};
+  if(p.endsWith('/profiles'))data=[{id:'writer',username:'writer',role:'author'}];
+  if(p.endsWith('/read_locked_story'))data=fail?{error:'incorrect_password'}:{work:row,chapters:[chapter]};
+  if(p.endsWith('/set_story_password'))data=row;
+  return {ok:true,text:async()=>JSON.stringify(data)};
+ };
+ const {store,storage}=harness({remote});await store.init();const w=store.state.works.find(w=>w.id==='locked');assert.equal(w.readerStyle.palette,'midnight');assert.equal(store.canReadStory(w),false);
+ await assert.rejects(store.unlockStory('locked','reader-password'),/Неверный/);assert.equal(store.state.chapters.length,0);fail=false;await store.unlockStory('locked','reader-password');assert.equal(store.canReadStory(w),true);assert.equal(store.state.chapters.find(c=>c.id==='secret').body,chapter.body);store.save();assert.ok(![...storage.values()].join('').includes(chapter.body));assert.ok(![...storage.values()].join('').includes('reader-password'));
+ store.unlockedStories.get('locked').until=Date.now()-1;assert.equal(store.canReadStory(w),false);await store.unlockStory('locked','reader-password');w.moderationRevision++;assert.equal(store.canReadStory(w),false);await store.unlockStory('locked','reader-password');store.logout();assert.equal(store.canReadStory(w),false);assert.equal(store.state.chapters.length,0);
+ const reloaded=harness({remote,storage});await reloaded.store.init();assert.equal(reloaded.store.canReadStory(reloaded.store.state.works.find(w=>w.id==='locked')),false);
+ store.setSession({authorId:'writer',token:'fake'});assert.equal(store.canReadStory(w),true);await assert.rejects(store.setStoryPassword('locked','я'.repeat(37)),/байт/);await store.setStoryPassword('locked','new-password');assert.ok(![...storage.values()].join('').includes('new-password'));assert.equal(JSON.parse(requests.find(r=>r.p.endsWith('/set_story_password')).opts.body).p_password,'new-password');
+ const local=harness();await local.store.init();await founder(local.store);await assert.rejects(local.store.setStoryPassword(local.store.state.works[0].id,'not-real'),/HTML|серверная/);
+});
+test('late password response cannot repopulate unlocked bodies after logout; token refresh retains epoch',async()=>{
+ let resolve;const row={id:'locked',author_id:'writer',password_protected:true,moderation_status:'approved',moderation_revision:1};
+ const remote=async url=>{const p=new URL(url).pathname;let data=[];if(p.endsWith('/moderation_version')||p.endsWith('/story_studio_version'))data=1;if(p.endsWith('/publication_snapshot'))data={works:[row],chapters:[]};if(p.endsWith('/read_locked_story'))await new Promise(r=>resolve=r);return {ok:true,text:async()=>JSON.stringify(p.endsWith('/read_locked_story')?{work:row,chapters:[{id:'s',work_id:'locked',body:'Late secret',status:'published'}]}:data)};};
+ const {store}=harness({remote});await store.init();const pending=store.unlockStory('locked','password');await new Promise(r=>setImmediate(r));store.logout();resolve();await assert.rejects(pending,/Аккаунт изменился/);assert.equal(store.state.chapters.length,0);
+ store.setSession({authorId:'writer',token:'one'});const epoch=store.sessionEpoch;store.setSession({authorId:'writer',token:'renewed'});assert.equal(store.sessionEpoch,epoch);
+});
+test('late chapter save cannot cache unseen text under an old public parent after logout',async()=>{
+ let release;const row={id:'story',author_id:'writer',title:'Story',moderation_status:'approved',moderation_revision:1};
+ const remote=async(url,opts={})=>{const p=new URL(url).pathname;let data=[];if(p.endsWith('/moderation_version'))data=1;if(p.endsWith('/publication_snapshot'))data={works:[row],chapters:[]};if(p.endsWith('/profiles'))data=[{id:'writer',username:'writer',role:'author'}];if(p.endsWith('/chapters')&&opts.method==='POST'){await new Promise(r=>release=r);data=[{id:'chapter',work_id:'story',title:'New chapter',body:'UNSEEN AFTER LOGOUT',status:'published'}];}return {ok:true,text:async()=>JSON.stringify(data)};};
+ const {store,storage}=harness({remote,storage:new Map([['chernila_session_v2',JSON.stringify({authorId:'writer',token:'fake'})]])});await store.init();const pending=store.upsertChapter({id:store.uid(),workId:'story',title:'New chapter',body:'UNSEEN AFTER LOGOUT',status:'published',order:1});await new Promise(r=>setImmediate(r));store.logout();release();await assert.rejects(pending,/Аккаунт изменился/);store.save();assert.ok(![...storage.values()].join('').includes('UNSEEN AFTER LOGOUT'));assert.equal(store.state.chapters.length,0);
 });

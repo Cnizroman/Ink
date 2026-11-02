@@ -25,7 +25,7 @@ let S=null; // Store.state
 const author=id=>S.authors.find(a=>a.id===id)||{displayName:'Неизвестный автор',username:'?',hue:40};
 const publicWorks=()=>S.works.filter(w=>Store.isWorkPublic(w));
 const work=id=>S.works.find(w=>w.id===id&&Store.canReadWork(w));
-const chaptersOf=(wid,all)=>S.chapters.filter(c=>c.workId===wid&&(all||c.status==='published')).sort((a,b)=>a.order-b.order);
+const chaptersOf=(wid,all)=>{const w=work(wid);return S.chapters.filter(c=>c.workId===wid&&w&&(all||c.status==='published'&&Store.canReadStory(w))).sort((a,b)=>a.order-b.order);};
 const likesOf=wid=>S.likes.filter(l=>l.workId===wid).length;
 const followersOf=aid=>S.follows.filter(f=>f.authorId===aid).length;
 const commentsOf=wid=>S.comments.filter(c=>c.workId===wid);
@@ -77,13 +77,13 @@ function pageGroup(id){
 }
 function workCard(w){const r=rating(w.id),a=author(w.authorId),prog=Store.progress.get()[w.id];
   return `<article class="work-card reveal"><a href="#/work/${w.id}" aria-label="${esc(w.title)}">${coverHTML(w)}</a>
-  <div class="work-body"><div style="display:flex;gap:7px;flex-wrap:wrap">${w.legacyUrl?'':`<span class="pill">${esc(TYPE_LABEL[w.type]||'')}</span>`}<span class="pill">${esc(STATUS_LABEL[w.status]||w.status)}</span></div>
+  <div class="work-body"><div style="display:flex;gap:7px;flex-wrap:wrap">${w.passwordProtected&&!Store.canReadStory(w)?'<span>▣ Текст по паролю</span>':w.legacyUrl?'':`<span class="pill">${esc(TYPE_LABEL[w.type]||'')}</span>`}<span class="pill">${esc(STATUS_LABEL[w.status]||w.status)}</span></div>
   <h3><a href="#/work/${w.id}">${esc(w.title)}</a></h3>
   <div class="small muted">✒ <a href="#/author/${a.id}">${esc(a.displayName)}</a> · ${esc(w.genre)} · ${esc(w.ageRating)}</div>
   ${groupsOf(w.id).map(g=>`<a class="small group-link" href="#/group/${encodeURIComponent(g.id)}">${esc(GROUP_KINDS[g.kind])}: ${esc(g.title)}</a>`).join('')}
   <p>${esc(w.description)}</p>
   ${prog?`<div class="progress-line" title="Прочитано ${Math.round(prog.pct)}%"><i style="width:${prog.pct}%"></i></div>`:''}
-  <div class="work-meta"><span class="rate">${r?('★ '+r.outOf10.toFixed(1)+' · '+r.count+' рец.'):'☆ пока без рецензий'}</span><span>👁 ${fmt(w.views||0)}</span><span>♥ ${likesOf(w.id)}</span>${w.legacyUrl?'<span>Полный текст ↗</span>':`<span>${chaptersOf(w.id).length} гл.</span><span>~${readTime(w)} мин</span>`}</div>
+  <div class="work-meta"><span class="rate">${r?('★ '+r.outOf10.toFixed(1)+' · '+r.count+' рец.'):'☆ пока без рецензий'}</span><span>👁 ${fmt(w.views||0)}</span><span>♥ ${likesOf(w.id)}</span>${w.passwordProtected&&!Store.canReadStory(w)?'<span>Главы скрыты</span>':w.legacyUrl?'<span>Полный текст ↗</span>':`<span>${chaptersOf(w.id).length} гл.</span><span>~${readTime(w)} мин</span>`}</div>
   </div></article>`}
 function authorCard(a){const ws=publicWorks().filter(w=>w.authorId===a.id);const likes=ws.reduce((s,w)=>s+likesOf(w.id),0);
   return `<article class="author-card reveal">${ava(a,'lg')}<div style="flex:1"><h3><a href="#/author/${a.id}">${esc(a.displayName)}</a></h3>
@@ -118,7 +118,7 @@ function pageHome(){
       <div class="hero-stats">
         <div class="hstat"><b>${publicWorks().length}</b><span>произведений</span></div>
         <div class="hstat"><b>${S.authors.length}</b><span>авторов</span></div>
-        <div class="hstat"><b>${S.chapters.filter(c=>c.status==='published'&&Store.isWorkPublic(work(c.workId))).length}</b><span>глав и текстов</span></div>
+        <div class="hstat"><b>${S.chapters.filter(c=>c.status==='published'&&Store.isWorkPublic(work(c.workId))&&Store.canReadStory(work(c.workId))).length}</b><span>глав и текстов</span></div>
         <div class="hstat"><b>${fmt(totalViews)}</b><span>просмотров книг</span></div>
         <div class="hstat"><b>${S.reviews.length}</b><span>рецензий</span></div>
       </div></header>
@@ -170,8 +170,15 @@ function pageCatalog(params){
   $('#catSearch').addEventListener('submit',e=>{e.preventDefault();update();});update();
 }
 
+function pageStoryGate(w){
+  setNav('catalog');$('#app').innerHTML=`<div class="wrap"><section class="panel story-lock"><span class="lock-emblem" aria-hidden="true">▣</span><div class="kicker">Доступ по паролю</div><h1>${esc(w.title)}</h1><p class="muted">${esc(w.description)}</p><p>Текст этой истории закрыт автором. Введите пароль, которым он с вами поделился.</p><form id="unlockStory" class="stack"><label class="field">Пароль истории<input class="input" name="storyPassword" type="password" required maxlength="72" autocomplete="off" placeholder="Пароль от автора"></label><button class="btn" type="submit">Открыть историю</button><p class="small muted" id="unlockStatus" role="status"></p></form><p class="small muted">Сайт не сохраняет этот пароль. После перезагрузки страницы его потребуется ввести снова.</p><a class="more" href="#/catalog">← В каталог</a></section></div>`;
+  const form=$('#unlockStory'),feedback=$('#unlockStatus'),original=location.hash;form.addEventListener('submit',async e=>{e.preventDefault();const b=form.querySelector('button');b.disabled=true;feedback.textContent='Проверяем пароль…';try{await Store.unlockStory(w.id,new FormData(form).get('storyPassword'));form.reset();if(form.isConnected&&location.hash===original)route();}catch(err){if(form.isConnected&&location.hash===original)feedback.textContent=err.message;}finally{b.disabled=false;}});
+}
+function storyAccessSettings(w){if(w.legacyUrl)return '';const ready=Store.mode==='supabase'&&Store.studioReady;return `<details class="panel story-access"><summary>Доступ к истории · ${w.passwordProtected?'закрыта паролем':'без пароля'}</summary><p class="small muted">Пароль доступен каждому автору. Название, обложка и аннотация остаются публичными; закрывается текст глав. Премодерация сохраняется.</p>${!ready?'<p class="small muted">'+(Store.mode==='local'?'В локальном режиме настоящая парольная защита недоступна. Нужна общая база Supabase.':'Сначала владелец должен применить SQL настройки мастерской. До этого защита не включается.')+'</p>':''}<form class="stack" id="storyPasswordForm"><label class="field">${w.passwordProtected?'Новый пароль':'Пароль истории'}<input class="input" name="storyPassword" type="password" minlength="8" maxlength="72" required autocomplete="off" placeholder="Не пароль от аккаунта — придумайте отдельный" ${ready?'':'disabled'}></label><label class="field">Повторите пароль<input class="input" name="confirmStoryPassword" type="password" minlength="8" maxlength="72" required autocomplete="off" placeholder="Введите пароль истории ещё раз" ${ready?'':'disabled'}></label><p class="small muted">Минимум 8 символов, не более 72 байт UTF-8 (кириллица занимает больше одного байта). Восстановить старый пароль нельзя, но вы можете назначить новый. Уже скачанные читателями копии отозвать нельзя.</p><div class="action-row"><button class="btn sm" type="submit" ${ready?'':'disabled'}>${w.passwordProtected?'Изменить пароль':'Включить защиту'}</button>${w.passwordProtected?'<button class="btn ghost sm" type="button" id="removeStoryPassword" '+(ready?'':'disabled')+'>Убрать пароль</button>':''}</div><p id="storyAccessStatus" class="small muted" role="status"></p></form></details>`;}
+function bindStoryAccess(w){const form=$('#storyPasswordForm');if(!form)return;const feedback=$('#storyAccessStatus');const save=async password=>{const buttons=$$('button',form);buttons.forEach(b=>b.disabled=true);feedback.textContent='Обновляем доступ…';try{await Store.setStoryPassword(w.id,password);form.reset();toast(password===null?'Пароль снят':'Пароль истории сохранён');if(form.isConnected)route();}catch(err){feedback.textContent=err.message;buttons.forEach(b=>b.disabled=false);}};form.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(form);if(f.get('storyPassword')!==f.get('confirmStoryPassword')){feedback.textContent='Пароли не совпадают.';return;}save(f.get('storyPassword'));});$('#removeStoryPassword')?.addEventListener('click',()=>{if(confirm('Снять пароль? После одобрения история будет доступна всем.'))save(null);});}
 function pageWork(id){
   const w=work(id); if(!w) return page404();
+  if(!Store.canReadStory(w))return pageStoryGate(w);
   setNav('catalog'); Store.addView(id);
   const a=author(w.authorId), chs=chaptersOf(id), r=rating(id), revs=reviewsOf(id), u=me(), shelf=myShelf(id);
   const similar=publicWorks().filter(x=>x.id!==id&&(x.genre===w.genre||x.type===w.type)).slice(0,4);
@@ -183,7 +190,7 @@ function pageWork(id){
     <div class="author-line">${ava(a,'md')}<div><a href="#/author/${a.id}" style="font-family:var(--serif);font-size:1.2rem"><b>${esc(a.displayName)}</b></a><div class="small muted">@${esc(a.username)} · ${followersOf(a.id)} подписчиков</div></div>
     ${u&&u.id!==a.id?`<button class="btn ${isFollowing(a.id)?'dark':'ghost'} sm" data-action="follow" data-id="${a.id}" style="margin-left:auto">${isFollowing(a.id)?'✓ Вы подписаны':'+ Подписаться'}</button>`:''}</div>
     <p style="font-family:var(--body);font-size:1.18rem;color:var(--muted)">${esc(w.description)}</p>
-    <div class="work-meta" style="font-size:.9rem"><span class="rate" style="font-size:1.05rem">${r?`★ ${r.outOf10.toFixed(1)} / 10 · ${r.total.toFixed(1)} из 21 · ${r.count} рец.`:'☆ Рецензий пока нет'}</span><span>👁 ${fmt(w.views||0)} просмотров</span><span>♥ ${likesOf(id)}</span>${w.legacyUrl?'<span>Полный авторский текст</span>':`<span>◈ ${chs.length} глав</span><span>✎ ${fmt(workWords(w))} слов</span><span>⏱ ~${readTime(w)} мин чтения</span>`}<span>обновл. ${esc(w.updatedAt||'')}</span></div>
+    <div class="work-meta" style="font-size:.9rem"><span class="rate" style="font-size:1.05rem">${r?`★ ${r.outOf10.toFixed(1)} / 10 · ${r.total.toFixed(1)} из 21 · ${r.count} рец.`:'☆ Рецензий пока нет'}</span><span>👁 ${fmt(w.views||0)} просмотров</span><span>♥ ${likesOf(id)}</span>${w.legacyUrl?'<span>Полный авторский текст</span>':`<span>◈ ${chs.length} глав</span><span>✎ ${fmt(workWords(w))} слов</span><span>⏱ ~${readTime(w)} мин чтения</span>`}${w.passwordProtected?'<span>▣ По паролю</span>':''}<span>обновл. ${esc(w.updatedAt||'')}</span></div>
     <div class="action-row">
       ${chs.length?`<a class="btn" href="#/read/${id}/${chs[0].id}">Читать →</a>`:''}
       ${w.legacyUrl?`<a class="btn ${chs.length?'ghost':''}" href="${esc(w.legacyUrl)}">Читать полный текст в исходной читалке ↗</a>`:''}
@@ -229,9 +236,10 @@ function pageWork(id){
     rf.addEventListener('submit',e=>{e.preventDefault();try{Store.addReview(id,new FormData(rf).get('text').trim(),scores);toast('Рецензия опубликована ✦');route();}catch(err){toast(err.message,true)}});}
 }
 
-let readerSettings=JSON.parse(localStorage.getItem('chernila_reader')||'{"theme":"dark","size":20}');
+let readerSettings={theme:'author',size:null};try{const p=JSON.parse(localStorage.getItem('chernila_reader')||'null');if(p){if(['author','dark','sepia','light'].includes(p.theme))readerSettings.theme=p.theme;if(Number.isFinite(p.size))readerSettings.size=Math.max(15,Math.min(28,p.size));}}catch(_){}
 function pageRead(wid,cid){
   const w=work(wid); if(!w) return page404();
+  if(!Store.canReadStory(w))return pageStoryGate(w);
   if(w.legacyUrl){location.replace(w.legacyUrl);return;}
   const chs=chaptersOf(wid); const idx=chs.findIndex(c=>c.id===cid); if(idx<0) return page404();
   const c=chs[idx], a=author(w.authorId), prev=chs[idx-1], next=chs[idx+1];
@@ -241,14 +249,14 @@ function pageRead(wid,cid){
     <span style="font-family:var(--serif)"><b>${esc(w.title)}</b> <span class="muted">· ${esc(a.displayName)}</span></span>
     <span style="margin-left:auto;display:flex;gap:7px;flex-wrap:wrap">
       <button class="chipbtn" data-action="font" data-v="-1">A−</button><button class="chipbtn" data-action="font" data-v="1">A+</button>
-      ${[['dark','Тьма'],['sepia','Бумага'],['light','Свет']].map(([v,l])=>`<button class="chipbtn ${readerSettings.theme===v?'on':''}" data-action="theme" data-v="${v}">${l}</button>`).join('')}
+      ${[['author','Авторская'],['dark','Тьма'],['sepia','Бумага'],['light','Свет']].map(([v,l])=>`<button class="chipbtn ${readerSettings.theme===v?'on':''}" data-action="theme" data-v="${v}">${l}</button>`).join('')}
       <button class="chipbtn ${isLiked(wid)?'on':''}" data-action="like" data-id="${wid}">♥ ${likesOf(wid)}</button>
     </span></div></div>
   ${w.legacyUrl?`<div class="wrap"><div class="panel" style="margin-top:22px;text-align:center">✦ Произведение первого автора платформы. Здесь — начало и аннотация, полный текст открывается в исходной авторской читалке.<br><br><a class="btn" href="${esc(w.legacyUrl)}">Читать «${esc(w.title)}» полностью ↗</a></div></div>`:''}
   <article class="reader ${readerSettings.theme} ${w.type==='poetry'?'poetry':''} reveal">
     <div class="kicker" style="justify-content:center">${String(idx+1).padStart(2,'0')} / ${String(chs.length).padStart(2,'0')}</div>
     <h1>${esc(c.title)}</h1><div class="r-meta">${esc(w.title)} · ${esc(a.displayName)} · ${fmt(words(c.body))} слов</div>
-    <div class="reader-text" style="font-size:${readerSettings.size}px">${renderText(c.body,w.type==='poetry')}</div>
+    <div class="reader-text" style="font-size:${readerSettings.size||InkStory.clean(w.readerStyle).size}px">${renderText(c.body,w.type==='poetry')}</div>
     <div style="text-align:center;color:var(--gold);margin-top:44px">✦ ✦ ✦</div>
   </article>
   <div class="wrap" style="max-width:760px"><div class="panel">
@@ -258,6 +266,7 @@ function pageRead(wid,cid){
     ${me()?`<form id="chComment" class="stack" style="margin-top:14px"><textarea class="input" name="text" rows="2" required placeholder="Ваша мысль об этой главе…"></textarea><div><button class="btn sm">Отправить</button></div></form>`:''}
   </div></div>
   <nav class="reader-nav">${prev?`<a class="btn ghost" href="#/read/${wid}/${prev.id}">← ${esc(prev.title)}</a>`:'<span></span>'}${next?`<a class="btn" href="#/read/${wid}/${next.id}">${esc(next.title)} →</a>`:`<a class="btn" href="#/work/${wid}">Завершить и оценить ★</a>`}</nav>`;
+  InkStory.apply($('.reader'),w.readerStyle,readerSettings.theme);
   Store.progress.set(wid,cid,(idx+1)/chs.length*100);
   const cc=$('#chComment'); if(cc) cc.addEventListener('submit',e=>{e.preventDefault();Store.addComment(wid,new FormData(cc).get('text').trim(),cid);toast('Комментарий к главе опубликован');route();});
   const onScroll=()=>{const d=document.documentElement;const p=d.scrollTop/Math.max(1,d.scrollHeight-d.clientHeight)*100;$('#readProgress').style.width=p+'%'};
@@ -305,7 +314,7 @@ function pageAuthors(){
 
 function pageFeed(){
   setNav('feed'); const u=me();
-  const items=S.chapters.filter(c=>c.status==='published'&&Store.isWorkPublic(work(c.workId))).map(c=>({c,w:work(c.workId)})).filter(x=>x.w)
+  const items=S.chapters.filter(c=>c.status==='published'&&Store.isWorkPublic(work(c.workId))&&Store.canReadStory(work(c.workId))).map(c=>({c,w:work(c.workId)})).filter(x=>x.w)
     .sort((a,b)=>(b.c.createdAt||'').localeCompare(a.c.createdAt||''));
   const mine=u?items.filter(x=>isFollowing(x.w.authorId)):[]; const show=mine.length?mine:items;
   $('#app').innerHTML=`<div class="wrap" style="padding:48px 0 0;max-width:860px"><div class="kicker">Лента</div>
@@ -410,16 +419,17 @@ function workFormHTML(w){
     <div><span class="small" style="font-weight:800;color:var(--muted)">Обложка: градиент и символ</span>
       <div class="cover-picker" id="coverPick" style="margin:10px 0">${COVERS.map(([f,t])=>`<button type="button" class="swatch ${w.cover?.from===f?'on':''}" data-from="${f}" data-to="${t}" style="background:linear-gradient(140deg,${f},${t})" aria-label="Градиент обложки"></button>`).join('')}</div>
       <div class="chiprow" id="symbolPick">${SYMBOLS.map(s=>`<button type="button" class="chipbtn ${w.cover?.symbol===s?'on':''}" data-s="${s}" style="font-size:1.1rem">${s}</button>`).join('')}</div></div>
+    ${!w.legacyUrl?'<details class="author-design"><summary>Авторское оформление · тема, шрифт и страница</summary><p class="small muted">Стиль применяется ко всем главам. Посетитель сможет выбрать личную тему чтения.</p><div id="workDesigner"></div></details>':''}
     <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" type="submit">${w.id?'Сохранить произведение':'Создать и перейти к главам →'}</button><a class="btn ghost" href="#/studio/works">Отмена</a></div>
   </form>`;
 }
 function bindWorkForm(w){
-  const workId=w?.id||Store.uid();
+  const workId=w?.id||Store.uid();let designChanged=false;const designer=$('#workDesigner')?InkStory.mount($('#workDesigner'),w?.readerStyle,()=>designChanged=true):null;
   let cover={...(w?w.cover:{from:COVERS[0][0],to:COVERS[0][1],symbol:'✦'})};
   $('#coverPick').addEventListener('click',e=>{const b=e.target.closest('.swatch');if(!b)return;cover.from=b.dataset.from;cover.to=b.dataset.to;$$('.swatch').forEach(x=>x.classList.toggle('on',x===b))});
   $('#symbolPick').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(!b)return;cover.symbol=b.dataset.s;$$('#symbolPick .chipbtn').forEach(x=>x.classList.toggle('on',x===b))});
   $('#workForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target);const u=me();
-    const data={id:workId,authorId:u.id,title:f.get('title').trim(),subtitle:f.get('subtitle').trim(),type:f.get('type'),genre:f.get('genre'),status:f.get('status'),ageRating:f.get('ageRating'),
+    const data={...(designer&&(designChanged||Store.mode==='local'||Store.studioReady)?{readerStyle:designer.read()}:{}),id:workId,authorId:u.id,title:f.get('title').trim(),subtitle:f.get('subtitle').trim(),type:f.get('type'),genre:f.get('genre'),status:f.get('status'),ageRating:f.get('ageRating'),
       tags:f.get('tags').split(',').map(t=>t.trim()).filter(Boolean),description:f.get('description').trim(),cover,legacyUrl:w?w.legacyUrl:null,featured:w?!!w.featured:false,views:w?w.views||0:0,createdAt:w?w.createdAt:Store.today()};
     const btn=e.target.querySelector('[type=submit]');btn.disabled=true;try{await Store.upsertWork(data); toast(w?(u.role==='admin'?'Произведение сохранено':'Карточка сохранена. Статус публикации указан в мастерской.'):'Произведение создано! Теперь добавьте первую главу ✒'); location.hash='#/studio/work/'+data.id;}catch(err){toast(err.message,true);}finally{btn.disabled=false;}});
 }
@@ -434,19 +444,19 @@ function pageStudioWork(id){
   $('#app').innerHTML=`<div class="wrap"><div class="studio-grid">${studioSide('works')}<div>
     <div class="kicker">Редактирование</div><h1 style="font-size:2.2rem;margin:10px 0">«${esc(w.title)}»</h1>
     <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:20px"><a class="btn ghost sm" href="#/work/${id}">Страница для читателей →</a>${w.legacyUrl?'':`<a class="btn sm" href="#/studio/chapter/${id}/new">+ Новая глава</a>`}</div>
-    ${moderationPanel(w)}<div class="panel">${w.legacyUrl?`<h2>Исходный авторский текст</h2><p class="muted">Полный текст хранится в файле <code>${esc(w.legacyUrl)}</code>. Здесь можно менять карточку; сам текст редактируется в исходнике, чтобы не создавать вторую несогласованную версию.</p><a class="btn ghost sm" href="${esc(w.legacyUrl)}">Открыть полный текст ↗</a>`:`<h2 style="margin-bottom:14px">Главы и черновики · ${chs.length}</h2>`}
+    ${moderationPanel(w)}${storyAccessSettings(w)}<div class="panel">${w.legacyUrl?`<h2>Исходный авторский текст</h2><p class="muted">Полный текст хранится в файле <code>${esc(w.legacyUrl)}</code>. Здесь можно менять карточку; сам текст редактируется в исходнике, чтобы не создавать вторую несогласованную версию.</p><a class="btn ghost sm" href="${esc(w.legacyUrl)}">Открыть полный текст ↗</a>`:`<h2 style="margin-bottom:14px">Главы и черновики · ${chs.length}</h2>`}
     ${!w.legacyUrl&&chs.length?chs.map((c,i)=>`<div class="chapter-row"><span class="num">${String(i+1).padStart(2,'0')}</span><span style="flex:1"><b style="font-family:var(--serif)">${esc(c.title)}</b> ${c.status==='draft'?'<span class="pill gold">черновик</span>':`<span class="pill">${Store.isWorkPublic(w)?'опубликовано':w.moderationStatus==='pending'?'на проверке':'подготовлена к публикации'}</span>`}<br><span class="small muted">${fmt(words(c.body))} слов · ${esc(c.createdAt||'')}</span></span>
       <button class="btn dark sm" data-action="ch-up" data-id="${c.id}" ${i===0?'disabled':''}>↑</button><button class="btn dark sm" data-action="ch-down" data-id="${c.id}" ${i===chs.length-1?'disabled':''}>↓</button>
       <a class="btn dark sm" href="#/studio/chapter/${id}/${c.id}">✎ Редактировать</a><button class="btn danger sm" data-action="del-chapter" data-id="${c.id}">✕</button></div>`).join(''):w.legacyUrl?'':'<p class="muted">Глав пока нет. Напишите первую — читатели уже заждались.</p>'}
     </div>
     <div class="panel" style="margin-top:20px"><h2 style="margin-bottom:14px">Карточка произведения</h2>${workFormHTML(w)}</div>
-  </div></div></div>`; bindWorkForm(w); }
+  </div></div></div>`; bindWorkForm(w);bindStoryAccess(w); }
 function pageStudioChapter(wid,cid){
   if(!guardStudio())return;const w=work(wid);if(!w||w.authorId!==me().id)return page404();
   if(w.legacyUrl){location.hash='#/studio/work/'+wid;return;}
   const c=cid==='new'?null:S.chapters.find(x=>x.id===cid&&x.workId===wid);if(cid!=='new'&&!c)return page404();const draftId=c?.id||Store.uid();setNav('studio');
   $('#app').innerHTML='<div class="wrap workshop-wrap" id="writerRoot"></div>';
-  disposePage=InkWriter.mount({host:$('#writerRoot'),work:w,chapter:c,chapterId:cid,userId:me().id,notify:toast,requiresReview:me().role!=='admin',
+  disposePage=InkWriter.mount({host:$('#writerRoot'),work:w,chapter:c,chapterId:cid,userId:me().id,notify:toast,requiresReview:me().role!=='admin',saveStyle:readerStyle=>Store.upsertWork({...w,readerStyle}),
     save:patch=>Store.upsertChapter({id:draftId,workId:wid,...patch,order:c?.order||Math.max(0,...chaptersOf(wid,true).map(x=>x.order))+1,createdAt:c?.createdAt||Store.today()}),
     onSaved:status=>{toast(status==='published'?(Store.isWorkPublic(work(wid))?'Глава опубликована':'Глава отправлена на проверку. До одобрения произведение скрыто от читателей.'):'Черновик сохранён в аккаунте');location.hash='#/studio/work/'+wid;}});
 }
@@ -462,10 +472,10 @@ function pageProfile(){
   <form id="profileForm" class="stack panel" style="margin-top:24px">
   <fieldset><legend>О вас</legend><div class="grid two"><label class="field">Логин (юзернейм)<input class="input" readonly value="${esc(u.username)}"></label><label class="field">Имя / псевдоним *<input class="input" name="displayName" required maxlength="80" value="${esc(u.displayName)}"></label></div>
   <label class="field">Как к вам обращаться / местоимения<input class="input" name="pronouns" maxlength="60" value="${esc(c.pronouns)}"></label><label class="field">Город<input class="input" name="location" maxlength="80" value="${esc(u.location||'')}"></label><label class="field">О себе<textarea class="input" name="bio" maxlength="1200" rows="5">${esc(u.bio||'')}</textarea></label></fieldset>
-  <fieldset><legend>Оформление</legend><p class="small muted">Выберите свои изображения с устройства, настройте кадр и сохраните профиль. ${Store.mode==='local'?'Локальный режим: изображения сохраняются только в этом браузере.':'Файлы загружаются в хранилище профилей Supabase.'}</p><div id="avatarUrlPicker"></div><div id="bannerUrlPicker"></div><div class="grid two"><label class="field">Акцентный цвет<input type="color" name="accent" value="${c.accent}"></label><label class="field">Цвет обложки<input type="color" name="bannerColor" value="${c.bannerColor}"></label></div></fieldset>
+  <fieldset><legend>Оформление</legend><p class="small muted">Выберите свои изображения с устройства, настройте кадр и сохраните профиль. ${Store.mode==='local'?'Локальный режим: изображения сохраняются только в этом браузере.':'Файлы загружаются в хранилище профилей Supabase.'}</p><div id="avatarUrlPicker"></div><div id="bannerUrlPicker"></div></fieldset>
   <fieldset><legend>Ссылки и интересы</legend><label class="field">Личный сайт<input class="input" name="website" type="url" maxlength="1000" value="${esc(c.website)}" placeholder="https://…"></label><div class="social-picker"><div class="connections-intro"><span class="connections-eyebrow">Ваши площадки</span><h3>Подключённые аккаунты</h3><p class="muted">Один профиль — ваши любимые сервисы. Подтвердите аккаунт через официальную авторизацию.</p><span class="connections-privacy">Публикуются только ссылки, которые вы добавите сами</span></div><div id="socialConnectionSummary" class="connection-summary" role="status"></div><div id="socialConnections" class="social-connections" aria-label="Подключение сервисов"></div><div class="connections-footer"><button class="btn ghost sm" id="reloadConnections" type="button" ${Store.mode==='local'?'disabled':''}>↻ Проверить подключения</button><p id="socialStatus" class="small muted" role="status"></p></div><details class="public-social-links"><summary><span><b>Публичные ссылки на соцсети</b><small>Выберите, где читатели смогут вас найти</small></span><span class="social-details-plus" aria-hidden="true">+</span></summary><p class="small muted">Telegram, ВКонтакте, YouTube и Instagram здесь добавляются как ссылки, без OAuth. Ссылку на подключённый аккаунт также можно разместить публично.</p><div id="socialLinksList"></div><div class="grid two"><label class="field">Социальная сеть<select id="socialNetwork">${InkProfileTools.networks.map(n=>`<option value="${n.id}">${esc(n.label)}</option>`).join('')}</select></label><label class="field">Имя пользователя или ссылка<input class="input" id="socialHandle" maxlength="1000" placeholder="@username или https://…"></label></div><button class="btn ghost sm" type="button" id="addSocialLink">Добавить / обновить ссылку</button><p class="small muted" id="socialNetworkHint"></p>${c.telegram?`<p class="small muted">Ранее сохранённая ссылка: <a href="${esc(c.telegram)}" target="_blank" rel="noopener noreferrer">Открыть ↗</a></p>`:''}</details></div><label class="field">Жанры, которые вы пишете (через запятую, до 8)<input class="input" name="genres" maxlength="480" value="${esc(c.genres.join(', '))}"></label></fieldset>
   <fieldset><legend>Публичная страница</legend><label><input type="checkbox" name="showLocation" ${c.showLocation?'checked':''}> Показывать город</label><br><label><input type="checkbox" name="showStats" ${c.showStats?'checked':''}> Показывать блок статистики</label><p class="small muted">Счётчики отдельных произведений остаются публичными.</p></fieldset>
-  <div class="action-row"><button class="btn" type="submit">Сохранить профиль</button><a class="btn ghost" href="#/author/${u.id}">Посмотреть страницу</a><button class="btn dark" type="button" id="resetAppearance">Сбросить оформление</button></div><p class="small muted" id="profileFeedback" role="status"></p></form>
+  <div class="action-row"><button class="btn" type="submit">Сохранить профиль</button><a class="btn ghost" href="#/author/${u.id}">Посмотреть страницу</a><button class="btn dark" type="button" id="resetAppearance">Сбросить изображения</button></div><p class="small muted" id="profileFeedback" role="status"></p></form>
   <div id="personalThemeSettings" style="margin-top:20px"></div><div class="panel" style="margin-top:20px"><h3>Значки и достижения</h3><p class="muted">Выдаются и отзываются администратором платформы.</p><div class="chiprow">${(u.badges||[]).map(b=>`<span class="pill gold">✦ ${esc(b)}</span>`).join('')||'Пока нет значков'}</div>${u.role==='admin'?'<p><a class="btn ghost" href="#/admin">♛ Панель администратора</a></p>':''}</div></div></div></div>`;
   const form=$('#profileForm'),networks=InkProfileTools.networks;
   let socials=[...(c.socialLinks||[])],disposed=false,dirty=false,saving=false,identityList=[],identityReady=Store.mode==='local',previewFrame=0;
@@ -506,7 +516,7 @@ function pageProfile(){
       else{if(dirty){if(!confirm('Сохранить изменения профиля перед авторизацией?'))return;await saveProfile();}await Store.beginSocialLink(b.dataset.connectSocial);}
     }catch(err){if(!disposed){toast(err.message,true);$('#socialStatus').textContent=err.message;}}finally{oauthBusy=false;if(!disposed)renderConnections();}
   });
-  $('#resetAppearance').addEventListener('click',()=>{Object.values(media).forEach(m=>m.remove());form.elements.accent.value='#c8a96e';form.elements.bannerColor.value='#302418';preview();});
+  $('#resetAppearance').addEventListener('click',()=>{Object.values(media).forEach(m=>m.remove());preview();});
   const saveProfile=async()=>{
     if(saving)throw new Error('Сохранение уже выполняется.');
     if(!form.reportValidity())throw new Error('Заполните обязательные поля профиля.');
@@ -533,7 +543,7 @@ function pageProfile(){
 }
 function reviewQueueHTML(){
   const queue=S.works.filter(w=>w.moderationStatus==='pending').sort((a,b)=>(a.submittedAt||'').localeCompare(b.submittedAt||''));
-  return `<section class="panel review-queue"><div class="sec-head"><div><div class="kicker">Ручная премодерация</div><h2>На проверке · ${queue.length}</h2></div><button class="btn ghost sm" type="button" id="refreshReviewQueue">Обновить</button></div>${Store.mode==='supabase'&&!Store.moderationReady?'<p class="moderation-warning">Серверная премодерация ещё не включена. Примените миграцию 20261102000200_manual_publication_review.sql. До этого нельзя считать прямые запросы защищёнными.</p>':''}<p class="small muted">Откройте заявку и прочитайте все подготовленные главы. Черновики не публикуются. Если автор изменит текст после загрузки заявки, решение будет отклонено — потребуется обновить очередь.</p>${Store.publicationReadError?'<p class="moderation-warning">Не удалось загрузить очередь. Нажмите «Обновить»; пустой список не означает отсутствие заявок.</p>':''}${queue.map(w=>`<details class="review-request" data-review-request="${esc(w.id)}"><summary><span><b>${esc(w.title)}</b><small>${esc(author(w.authorId).displayName)} · @${esc(author(w.authorId).username)} · версия ${w.moderationRevision||1}</small></span><span class="pill">Проверить</span></summary><div class="review-request-body"><p>${esc(w.description)}</p><p class="small muted">${esc(w.genre)} · ${esc(w.ageRating||'12+')}</p>${chaptersOf(w.id).map(c=>`<section class="review-chapter"><h3>${esc(c.title)}</h3><div class="reader-text">${renderText(c.body,w.type==='poetry')}</div></section>`).join('')||'<p class="muted">Нет подготовленных глав. Одобрение недоступно.</p>'}<form class="review-decision stack" data-review-work="${esc(w.id)}" data-revision="${w.moderationRevision||1}"><label class="field">Причина возврата на доработку (обязательна при возврате)<textarea class="input" name="note" rows="3" maxlength="2000"></textarea></label><div class="action-row"><button class="btn" name="decision" value="approved" ${!chaptersOf(w.id).length?'disabled':''}>Одобрить публикацию</button><button class="btn ghost" name="decision" value="rejected">Вернуть на доработку</button></div><p class="small muted" role="status"></p></form></div></details>`).join('')||'<div class="empty">В очереди нет новых заявок.</div>'}</section>`;
+  return `<section class="panel review-queue"><div class="sec-head"><div><div class="kicker">Ручная премодерация</div><h2>На проверке · ${queue.length}</h2></div><button class="btn ghost sm" type="button" id="refreshReviewQueue">Обновить</button></div>${Store.mode==='supabase'&&!Store.moderationReady?'<p class="moderation-warning">Серверная премодерация ещё не включена. Примените миграцию 20261102000200_manual_publication_review.sql. До этого нельзя считать прямые запросы защищёнными.</p>':''}<p class="small muted">Откройте заявку и прочитайте все подготовленные главы. Черновики не публикуются. Если автор изменит текст после загрузки заявки, решение будет отклонено — потребуется обновить очередь.</p>${Store.publicationReadError?'<p class="moderation-warning">Не удалось загрузить очередь. Нажмите «Обновить»; пустой список не означает отсутствие заявок.</p>':''}${queue.map(w=>`<details class="review-request" data-review-request="${esc(w.id)}"><summary><span><b>${esc(w.title)}</b><small>${esc(author(w.authorId).displayName)} · @${esc(author(w.authorId).username)} · версия ${w.moderationRevision||1}</small></span><span class="pill">Проверить</span></summary><div class="review-request-body"><p>${esc(w.description)}</p><p class="small muted">${esc(w.genre)} · ${esc(w.ageRating||'12+')}</p>${chaptersOf(w.id).map(c=>`<section class="review-chapter"><h3>${esc(c.title)}</h3><div class="reader-text" data-review-style="${esc(w.id)}">${renderText(c.body,w.type==='poetry')}</div></section>`).join('')||'<p class="muted">Нет подготовленных глав. Одобрение недоступно.</p>'}<form class="review-decision stack" data-review-work="${esc(w.id)}" data-revision="${w.moderationRevision||1}"><label class="field">Причина возврата на доработку (обязательна при возврате)<textarea class="input" name="note" rows="3" maxlength="2000"></textarea></label><div class="action-row"><button class="btn" name="decision" value="approved" ${!chaptersOf(w.id).length?'disabled':''}>Одобрить публикацию</button><button class="btn ghost" name="decision" value="rejected">Вернуть на доработку</button></div><p class="small muted" role="status"></p></form></div></details>`).join('')||'<div class="empty">В очереди нет новых заявок.</div>'}</section>`;
 }
 function pageAdmin(){
   const u=me(); if(!u||u.role!=='admin'){toast('Доступ только для администратора платформы',true);location.hash='#/';return}
@@ -548,6 +558,7 @@ function pageAdmin(){
    ${S.works.map(w=>`<div class="comment"><div style="flex:1"><b>${esc(w.title)}</b> <span class="small muted">${esc(author(w.authorId).displayName)} · 👁 ${fmt(w.views||0)}</span></div><button class="btn dark sm" data-action="feature" data-id="${w.id}">${w.featured?'✦ На главной':'На главную'}</button><button class="btn danger sm" data-action="del-work" data-id="${w.id}">Удалить</button></div>`).join('')}</div>
    <p class="small muted" style="margin-top:14px">Старая панель модерации рецензий книг Cnizroman сохранена: <a href="reviews-admin.html" style="color:var(--gold)">reviews-admin.html ↗</a></p>
   </div></div></div>`;
+  $$('[data-review-style]').forEach(el=>InkStory.apply(el,work(el.dataset.reviewStyle)?.readerStyle));
   $('#refreshReviewQueue').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;try{if(Store.mode==='supabase')await Store.pullFromSupabase({strict:true});route();}catch(err){toast(err.message,true);b.disabled=false;}});
   $$('.review-decision').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const buttons=$$('button',form),feedback=$('[role=status]',form);if(form.dataset.busy)return;form.dataset.busy='true';buttons.forEach(b=>b.disabled=true);try{await Store.reviewPublication(form.dataset.reviewWork,Number(form.dataset.revision),e.submitter?.value,form.elements.note.value);toast('Решение сохранено');route();}catch(err){feedback.textContent=err.message;delete form.dataset.busy;buttons.forEach(b=>b.disabled=false);}}));
   const form=$('#badgeForm'),select=form.elements.authorId;
@@ -568,11 +579,11 @@ function pageAuth(params){
    <p class="muted center">${mode==='signup'?'Создайте аккаунт и подтвердите email, чтобы открыть студию автора.':'Ваши черновики и полка скучали.'}</p>
    <div class="tabs" style="justify-content:center;margin-top:18px"><a href="#/auth" class="${mode==='login'?'on':''}">Вход</a><a href="#/auth?mode=signup" class="${mode==='signup'?'on':''}">Регистрация</a></div>
    <form class="stack" id="authForm">
-   ${mode==='signup'?`<label class="field">Логин (юзернейм) *<input class="input" name="username" required minlength="3" maxlength="30" pattern="[A-Za-z0-9_]{3,30}" title="От 3 до 30 символов: латинские буквы, цифры и подчёркивание" placeholder="writer_name" autocomplete="username"><span class="small muted">3–30 символов: a–z, 0–9 и _.</span></label>
-   <label class="field">Имя или псевдоним *<input class="input" name="displayName" required placeholder="Как вас будут знать читатели"></label>
-   <label class="field">Email *<input class="input" name="email" type="email" required autocomplete="email"></label>`
+   ${mode==='signup'?`<label class="field">Логин (юзернейм) *<input class="input" name="username" required minlength="3" maxlength="30" pattern="[A-Za-z0-9_]{3,30}" title="От 3 до 30 символов: латинские буквы, цифры и подчёркивание" placeholder="Например: roman_writer" autocomplete="username"><span class="small muted">3–30 символов: a–z, 0–9 и _. <b>После регистрации юзернейм изменить нельзя.</b></span></label>
+   <label class="field">Имя или псевдоним *<input class="input" name="displayName" required placeholder="Имя или творческий псевдоним"></label>
+   <label class="field">Email *<input class="input" name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>`
    :`<label class="field">Логин (юзернейм)<input class="input" name="login" required autocomplete="username" placeholder="cnizroman"></label>`}
-   <label class="field">Пароль *<input class="input" name="password" type="password" required minlength="6" autocomplete="${mode==='signup'?'new-password':'current-password'}"></label>
+   <label class="field">Пароль *<input class="input" name="password" type="password" required minlength="6" placeholder="${mode==='signup'?'Придумайте пароль — от 6 символов':'Ваш пароль'}" autocomplete="${mode==='signup'?'new-password':'current-password'}"></label>
    <button class="btn" type="submit" style="justify-content:center">${mode==='signup'?'Создать аккаунт автора':'Войти'}</button>
    <p id="authFeedback" class="auth-feedback small" role="status" aria-live="polite" hidden></p>
    <p class="small muted center">${Store.mode==='supabase'?'Вход по юзернейму. Также можно ввести email аккаунта. Данные хранятся в Supabase Auth.':'Локальный режим: аккаунт создаётся в вашем браузере. Вход основателя: <b>cnizroman</b> / <b>demo1234</b>'}</p>
@@ -653,7 +664,7 @@ document.addEventListener('click',async e=>{
   if(act==='del-chapter'){ if(confirm('Удалить главу?')){await Store.deleteChapter(id);toast('Глава удалена');route();} }
   if(act==='feature'){ const w=work(id); await Store.setFeatured(id,!w.featured); toast(w.featured?'Произведение — на главной':'Убрано с главной'); route(); }
   if(act==='reset'){ if(confirm('Сбросить все локальные данные платформы к стартовым?')) Store.resetDemo(); }
-  if(act==='font'){ readerSettings.size=Math.min(28,Math.max(15,readerSettings.size+ +el.dataset.v)); localStorage.setItem('chernila_reader',JSON.stringify(readerSettings)); route(); }
+  if(act==='font'){ readerSettings.size=Math.min(28,Math.max(15,(readerSettings.size||20)+ +el.dataset.v)); localStorage.setItem('chernila_reader',JSON.stringify(readerSettings)); route(); }
   if(act==='theme'){ readerSettings.theme=el.dataset.v; localStorage.setItem('chernila_reader',JSON.stringify(readerSettings)); route(); }
   if(act==='ch-up'||act==='ch-down'){ const c=S.chapters.find(x=>x.id===id); const sibs=chaptersOf(c.workId,true); const i=sibs.indexOf(c); const j=act==='ch-up'?i-1:i+1; if(sibs[j]){const t=c.order;c.order=sibs[j].order;sibs[j].order=t;await Store.upsertChapter(c);await Store.upsertChapter(sibs[j]);route();} }
   }catch(err){toast(err.message,true);}
@@ -714,6 +725,11 @@ async function boot(){
   await Store.init(); S=Store.state; renderUserChip(); route();
   addEventListener('hashchange',route);
   bindLiveSearch();
+  $('#openSiteTheme').addEventListener('click',()=>{
+    const d=$('#siteThemeDialog'),host=$('#quickThemes');host.innerHTML=InkTheme.presets.map(p=>`<button class="quick-theme" type="button" data-quick-theme="${p.id}"><span style="background:${p.background};color:${p.text};border-color:${p.accent}">Aa</span>${esc(p.label)}</button>`).join('');d.showModal();
+  });
+  $('#quickThemes').addEventListener('click',e=>{const b=e.target.closest('[data-quick-theme]');if(!b)return;try{InkTheme.save(InkTheme.presets.find(p=>p.id===b.dataset.quickTheme),me()?.id);toast('Тема сайта сохранена');}catch(err){toast('Не удалось сохранить тему: '+err.message,true);}});
+  $('#closeSiteTheme').addEventListener('click',()=>$('#siteThemeDialog').close());
   $('#burger').addEventListener('click',()=>$('#mainNav').classList.toggle('open'));
   $('#topSearch').addEventListener('submit',e=>{e.preventDefault();$('#searchSuggestions').hidden=true;$('#topSearchInput').setAttribute('aria-expanded','false');const v=$('#topSearchInput').value.trim();location.hash='#/catalog'+(v?'?q='+encodeURIComponent(v):'');});
 }

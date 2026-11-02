@@ -24,9 +24,11 @@
 <script src="supabase-config.js"></script>
 <script src="data.js" defer></script>
 <script src="profile-tools.js" defer></script>
+<script src="story-tools.js" defer></script>
 <script src="store.js" defer></script>
 <script src="text-format.js" defer></script>
 <script src="workshop-tools.js" defer></script>
+<script src="visual-editor.js" defer></script>
 <script src="writer.js" defer></script>
 <script src="app.js" defer></script>
 </head>
@@ -49,13 +51,14 @@
       <span aria-hidden="true">⌕</span>
       <input id="topSearchInput" type="search" placeholder="Название произведения…" aria-label="Поиск по названию произведения">
     </form>
-    <div class="userchip" id="userChip"></div>
+    <button class="theme-toggle" id="openSiteTheme" type="button" aria-label="Тема сайта" title="Тема сайта">◐</button><div class="userchip" id="userChip"></div>
   </div>
   <div class="mode-banner" id="modeBanner" hidden>
     <div class="wrap"><span>● Локальный режим: данные пока хранятся в браузере каждого посетителя. Для общей базы нужна <a href="#/setup"><b>настройка владельца</b></a>.</span><span style="margin-left:auto">Локальный тестовый вход: <b>cnizroman</b> · <b>demo1234</b></span></div>
   </div>
 </header>
 
+<dialog class="writer-dialog" id="siteThemeDialog" aria-labelledby="siteThemeDialogTitle"><div class="sec-head"><h2 id="siteThemeDialogTitle">Тема сайта</h2><button class="btn ghost sm" id="closeSiteTheme" type="button">Закрыть</button></div><p class="muted">Выберите тему — она применится сразу и сохранится в этом браузере. Доступно и без входа.</p><div id="quickThemes" class="quick-themes"></div><p class="small muted">Свои цвета можно задать в настройках профиля → «Цвета сайта».</p></dialog>
 <main id="app" tabindex="-1">
   <div class="wrap" style="padding:90px 20px;text-align:center;color:var(--muted)">
     <div style="font-family:var(--serif);font-size:2.4rem;color:var(--gold)">✒</div>

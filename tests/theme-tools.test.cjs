@@ -13,3 +13,7 @@ test('personal theme restores per-account choices and falls back safely on corru
  ctx.InkTheme.activate('bob');assert.equal(css.get('--bg'),theme.presets[0].background);ctx.InkTheme.activate('alice');assert.equal(css.get('--bg'),theme.presets[1].background);
  ctx.InkTheme.activate(null);assert.equal(css.get('--bg'),theme.presets[0].background);
 });
+test('guest presets persist immediately, remain separate from accounts and fail truthfully on storage errors',()=>{
+ const values=new Map(),css=new Map(),ctx={document:{documentElement:{style:{setProperty:(k,v)=>css.set(k,v)},dataset:{}}},localStorage:{getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v)}};ctx.window=ctx;vm.createContext(ctx);vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname,'../theme-tools.js'),'utf8'),ctx);
+ ctx.InkTheme.save(theme.presets[1],null);ctx.InkTheme.activate('writer');assert.equal(css.get('--bg'),theme.presets[0].background);ctx.InkTheme.activate(null);assert.equal(css.get('--bg'),theme.presets[1].background);assert.equal(JSON.parse(values.get('chernila_site_theme_guest')).background,theme.presets[1].background);ctx.localStorage.setItem=()=>{throw new Error('Quota exceeded')};assert.throws(()=>ctx.InkTheme.save(theme.presets[2],null),/Quota/);assert.equal(css.get('--bg'),theme.presets[1].background);
+});

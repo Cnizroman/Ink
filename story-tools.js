@@ -1,0 +1,26 @@
+/* Author-facing story design. Fixed palettes and bounded typography, never arbitrary CSS. */
+(function(root){'use strict';
+const palettes=[
+ {id:'paper',label:'Тёплая бумага',bg:'#f5efe3',text:'#302b24',accent:'#805b2c'},
+ {id:'ink',label:'Чернила',bg:'#121111',text:'#eae4d8',accent:'#cfb67d'},
+ {id:'midnight',label:'Ночной архив',bg:'#0d1725',text:'#e1edf4',accent:'#85bddc'},
+ {id:'forest',label:'Лесная хроника',bg:'#10211c',text:'#e3efe4',accent:'#98c6a4'},
+ {id:'plum',label:'Сон и память',bg:'#221529',text:'#f0e6f0',accent:'#d6aad9'},
+ {id:'terminal',label:'Терминал',bg:'#0c1612',text:'#c4e6cf',accent:'#8cd4a4'}
+];
+const fonts={serif:'var(--body)',sans:'var(--ui)',mono:'ui-monospace,monospace'};
+function clean(input={}){if(!input||typeof input!=='object')input={};const choice=(k,values,fallback)=>values.includes(input[k])?input[k]:fallback,num=(k,min,max,fallback)=>Number.isFinite(Number(input[k]))?Math.max(min,Math.min(max,Number(input[k]))):fallback;
+ return {palette:choice('palette',palettes.map(p=>p.id),'paper'),font:choice('font',Object.keys(fonts),'serif'),size:num('size',16,28,21),leading:num('leading',1.4,2.2,1.8),width:num('width',560,960,760),align:choice('align',['left','justify'],'left'),dropcap:input.dropcap===true,headings:choice('headings',['classic','minimal','caps'],'classic'),divider:choice('divider',['stars','line','diamond'],'stars')};}
+function css(input){const s=clean(input),p=palettes.find(p=>p.id===s.palette);return `--story-bg:${p.bg};--story-text:${p.text};--story-accent:${p.accent};--story-font:${fonts[s.font]};--story-size:${s.size}px;--story-leading:${s.leading};--story-width:${s.width}px;--story-align:${s.align};`;}
+function apply(host,input,readingTheme){const s=clean(input);host.classList.add('story-surface');host.style.cssText=css(s);const personal={dark:['#121111','#eae4d8','#cfb67d'],sepia:['#f3e9d2','#3a2e1d','#79551d'],light:['#fffefa','#26231e','#79551d']}[readingTheme];if(personal)['bg','text','accent'].forEach((key,i)=>host.style.setProperty('--story-'+key,personal[i]));host.dataset.dropcap=String(s.dropcap);host.dataset.headings=s.headings;host.dataset.divider=s.divider;return s;}
+function mount(host,input,onChange){let value=clean(input);host.innerHTML=`<div class="story-palette-grid" role="group" aria-label="Авторские стили">${palettes.map(p=>`<button class="story-palette" type="button" data-story-palette="${p.id}" style="--sample-bg:${p.bg};--sample-text:${p.text};--sample-accent:${p.accent}"><span>Aa</span><b>${p.label}</b></button>`).join('')}</div><div class="grid two story-type-controls"><label class="field">Шрифт<select data-style="font"><option value="serif">Книжный</option><option value="sans">Современный</option><option value="mono">Машинопись</option></select></label><label class="field">Размер букв<input type="range" data-style="size" min="16" max="28" step="1"></label><label class="field">Межстрочный интервал<input type="range" data-style="leading" min="1.4" max="2.2" step="0.1"></label><label class="field">Ширина страницы<input type="range" data-style="width" min="560" max="960" step="40"></label><label class="field">Выравнивание<select data-style="align"><option value="left">По левому краю</option><option value="justify">По ширине</option></select></label><label class="field">Заголовки<select data-style="headings"><option value="classic">Книжные</option><option value="minimal">Лаконичные</option><option value="caps">Архивные</option></select></label><label class="field">Разделитель сцен<select data-style="divider"><option value="stars">Три звезды</option><option value="line">Тонкая линия</option><option value="diamond">Ромб</option></select></label><label class="check-field"><input type="checkbox" data-style="dropcap"> Буквица в начале</label></div><div class="story-design-sample" aria-label="Образец стиля"><h3>Начало истории</h3><p>В комнате пахло бумагой и дождём. На столе лежало письмо, которое никто не решался открыть.</p><hr><p>У каждой истории есть свой голос.</p></div>`;
+ const sample=host.querySelector('.story-design-sample');
+ const fill=()=>{host.querySelectorAll('[data-style]').forEach(el=>{if(el.type==='checkbox')el.checked=value[el.dataset.style];else el.value=value[el.dataset.style];});host.querySelectorAll('[data-story-palette]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.storyPalette===value.palette)));apply(sample,value);};
+ const changed=()=>{value=clean(value);fill();onChange?.(value);};
+ host.addEventListener('input',e=>{const el=e.target.closest('[data-style]');if(!el)return;value={...value,[el.dataset.style]:el.type==='checkbox'?el.checked:el.value};changed();});
+ host.addEventListener('change',e=>{const el=e.target.closest('[data-style]');if(el){value={...value,[el.dataset.style]:el.type==='checkbox'?el.checked:el.value};changed();}});
+ host.addEventListener('click',e=>{const b=e.target.closest('[data-story-palette]');if(b){value={...value,palette:b.dataset.storyPalette};changed();}});fill();
+ return {read:()=>clean(value),set(v){value=clean(v);fill();},dispose(){}};
+}
+const api={palettes,clean,css,apply,mount};root.InkStory=api;if(typeof module!=='undefined')module.exports=api;
+})(typeof window!=='undefined'?window:globalThis);

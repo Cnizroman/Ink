@@ -17,11 +17,13 @@ function clean(input={}){return Object.fromEntries(Object.keys(fields).map(k=>{c
 function validate(input){const p=clean(input);if(contrast(p.text,p.background)<4.5||contrast(p.text,p.panel)<4.5)throw new Error('Текст сливается с фоном. Увеличьте контраст текста и панелей.');if(contrast(p.accent,p.background)<4.5||contrast(p.accent,p.panel)<4.5)throw new Error('Акцент сливается с фоном. Выберите более контрастный цвет.');return p;}
 function variables(input){const p=validate(input),readable=c=>Math.min(contrast(c,p.background),contrast(c,p.panel))>=4.5?c:p.text;return {'--bg':p.background,'--bg2':mix(p.background,p.panel,.4),'--panel':p.panel,'--panel2':mix(p.panel,p.text,.06),'--text':p.text,'--muted':readable(mix(p.background,p.text,.72)),'--faint':readable(mix(p.background,p.text,.58)),'--gold':p.accent,'--gold2':readable(mix(p.accent,p.text,.2)),'--ink':contrast(p.accent,'#000000')>=contrast(p.accent,'#ffffff')?'#000000':'#ffffff','--line':mix(p.panel,p.text,.16),'--line2':mix(p.panel,p.text,.28),'--site-bg-rgb':rgb(p.background).join(','),'--site-accent-rgb':rgb(p.accent).join(',')};}
 let activeId;
-const key=id=>'chernila_site_theme_'+encodeURIComponent(id);
-function load(id){if(!id)return clean(presets[0]);try{const saved=localStorage.getItem(key(id));if(saved)return validate(JSON.parse(saved));}catch(_){}return clean(presets[0]);}
+const key=id=>'chernila_site_theme_'+encodeURIComponent(id||'guest');
+function load(id){try{const saved=localStorage.getItem(key(id));if(saved)return validate(JSON.parse(saved));}catch(_){}return clean(presets[0]);}
 function apply(input){const p=validate(input);if(typeof document!=='undefined'){for(const [k,v] of Object.entries(variables(p)))document.documentElement.style.setProperty(k,v);document.documentElement.dataset.siteTheme='personal';document.documentElement.style.colorScheme=luminance(p.background)>.4?'light':'dark';}return p;}
 function activate(id){id=id||null;if(id===activeId)return;activeId=id;apply(load(id));}
+function save(input,id){const p=validate(input);localStorage.setItem(key(id),JSON.stringify(p));activeId=id||null;apply(p);if(typeof document!=='undefined'&&typeof CustomEvent!=='undefined')document.dispatchEvent(new CustomEvent('ink-theme-saved',{detail:{id:activeId,palette:p}}));return p;}
 function mount(host,id,notify){
+ id=id||null;
  let disposed=false,saved=load(id);activate(id);
  host.innerHTML=`<section class="panel personal-theme"><div class="kicker">Только для вас</div><h2>Цвета сайта</h2><p class="muted">Меняют весь интерфейс только у вас. Сохраняются отдельно для каждого аккаунта в этом браузере; оформление публичного профиля других посетителей не меняется.</p><div class="theme-presets" role="group" aria-label="Готовые темы">${presets.map(p=>`<button type="button" class="btn ghost sm" data-theme-preset="${p.id}" aria-pressed="false"><span class="theme-swatch" style="background:${p.background};border-color:${p.accent}"></span>${p.label}</button>`).join('')}</div><form id="siteThemeForm"><div class="grid two">${Object.entries(fields).map(([name,label])=>`<label class="field">${label}<input type="color" name="${name}" value="${saved[name]}"></label>`).join('')}</div><div class="action-row"><button class="btn" type="submit">Сохранить цвета сайта</button><button class="btn ghost" type="button" id="cancelSiteTheme">Отменить изменения</button><button class="btn dark" type="button" id="resetSiteTheme">Стандартные цвета</button></div><p id="siteThemeStatus" class="small muted" role="status"></p></form></section>`;
  const form=host.querySelector('form'),status=host.querySelector('[role=status]');
@@ -30,12 +32,13 @@ function mount(host,id,notify){
  const fill=p=>{for(const k of Object.keys(fields))form.elements[k].value=p[k];mark(p);};
  const preview=()=>{try{const p=apply(read());mark(p);status.textContent='Предпросмотр всего сайта. Нажмите «Сохранить цвета сайта».';}catch(e){status.textContent=e.message;}};
  form.addEventListener('input',preview);form.addEventListener('change',preview);
- host.addEventListener('click',e=>{const b=e.target.closest('[data-theme-preset]');if(!b)return;fill(presets.find(p=>p.id===b.dataset.themePreset));preview();});
- form.addEventListener('submit',e=>{e.preventDefault();try{if(activeId!==id)throw new Error('Аккаунт изменился. Откройте настройки заново.');const p=validate(read());localStorage.setItem(key(id),JSON.stringify(p));saved=p;apply(p);status.textContent='Цвета сайта сохранены для этого аккаунта.';notify('Личная тема сохранена');}catch(err){status.textContent=err.message;notify('Тема не сохранена: '+err.message,true);}});
+ host.addEventListener('click',e=>{const b=e.target.closest('[data-theme-preset]');if(!b)return;try{saved=save(presets.find(p=>p.id===b.dataset.themePreset),id);fill(saved);status.textContent='Тема применена и сохранена.';}catch(err){fill(saved);apply(saved);status.textContent='Не удалось сохранить тему: '+err.message;notify(status.textContent,true);}});
+ form.addEventListener('submit',e=>{e.preventDefault();try{if(activeId!==id)throw new Error('Аккаунт изменился. Откройте настройки заново.');const p=validate(read());saved=save(p,id);status.textContent='Цвета сайта сохранены для этого аккаунта.';notify('Личная тема сохранена');}catch(err){status.textContent=err.message;notify('Тема не сохранена: '+err.message,true);}});
  host.querySelector('#cancelSiteTheme').addEventListener('click',()=>{fill(saved);apply(saved);status.textContent='Несохранённые изменения отменены.';});
  host.querySelector('#resetSiteTheme').addEventListener('click',()=>{fill(presets[0]);preview();});fill(saved);
- return {dispose(){if(disposed)return;disposed=true;if(activeId===id)apply(load(id));}};
+ const external=e=>{if(e.detail.id===id){saved=e.detail.palette;fill(saved);status.textContent='Тема применена и сохранена.';}};document.addEventListener?.('ink-theme-saved',external);
+ return {dispose(){document.removeEventListener?.('ink-theme-saved',external);if(disposed)return;disposed=true;if(activeId===id)apply(load(id));}};
 }
-const api={presets,clean,validate,contrast,variables,load,apply,activate,mount};root.InkTheme=api;if(typeof module!=='undefined')module.exports=api;
+const api={presets,clean,validate,contrast,variables,load,apply,activate,save,mount};root.InkTheme=api;if(typeof module!=='undefined')module.exports=api;
 if(typeof document!=='undefined'){try{activate(JSON.parse(localStorage.getItem('chernila_session_v2')||'null')?.authorId);}catch(_){activate(null);}}
 })(typeof window!=='undefined'?window:globalThis);

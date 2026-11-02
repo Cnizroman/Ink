@@ -19,10 +19,11 @@ function parseDraft(raw,json=false){
   if(!v||typeof v!=='object'||typeof v.body!=='string'||(v.title!==undefined&&typeof v.title!=='string')||(v.notes!==undefined&&typeof v.notes!=='string'))throw new Error('Некорректный файл черновика.');
   const draft={title:v.title||'',body:v.body.replace(/\r\n/g,'\n'),notes:v.notes||''};
   if(draft.body.length>400000||draft.title.length>160||draft.notes.length>10000)throw new Error('Файл превышает лимиты главы: 400 000 знаков, заголовок 160, заметки 10 000.');
+  if(v.readerStyle&&root.InkStory)draft.readerStyle=root.InkStory.clean(v.readerStyle);
   return draft;
 }
 function outline(text){let offset=0;return text.split('\n').flatMap(line=>{const at=offset;offset+=line.length+1;const m=line.match(/^(#{1,3}) (.+)$/);return m?[{at,level:m[1].length,title:m[2]}]:[];});}
-function mount({host,ta,title,notes,key,settings,changed,notify}){
+function mount({host,ta,title,notes,key,settings,changed,notify,visualActions,getStyle,setStyle}){
   const esc=root.InkText.escape,$=s=>host.querySelector(s);let disposed=false,activeMatch=-1;
   const options=host.querySelector('.workshop-options');
   options.insertAdjacentHTML('beforeend',`<label class="field">Вид редактора<select id="writerLayout"><option value="split">Текст и предпросмотр</option><option value="stack">Друг под другом</option><option value="text">Только текст</option><option value="preview">Только предпросмотр</option></select></label><label class="field">Тема листа<select id="writerTheme"><option value="dark">Тёмная</option><option value="paper">Бумага</option><option value="light">Светлая</option></select></label><label class="field">Ширина области<input id="writerWidth" type="range" min="640" max="1280" step="40"></label><label class="field check-field"><input id="writerSpellcheck" type="checkbox"> Проверка орфографии</label>`);
@@ -37,7 +38,7 @@ function mount({host,ta,title,notes,key,settings,changed,notify}){
   const readVersions=()=>{try{const v=JSON.parse(localStorage.getItem(versionKey)||'[]');versions=Array.isArray(v)?v.slice(-8).filter(x=>{try{parseDraft(JSON.stringify(x),true);return typeof x.id==='string'&&Number.isFinite(x.at);}catch(_){return false;}}):[];}catch(_){versions=[];}};
   const renderVersions=()=>{$('#writerVersions').innerHTML=[...versions].reverse().map(v=>`<div class="version-row"><div><b>${esc(v.label||v.title||'Версия')}</b><span class="small muted">${esc(new Date(v.at).toLocaleString('ru'))} · ${v.body.length} знаков</span></div><button class="btn ghost sm" type="button" data-restore-version="${esc(v.id)}">Восстановить</button><button class="btn ghost sm" type="button" data-delete-version="${esc(v.id)}">Удалить</button></div>`).join('')||'<p class="small muted">Сохранённых версий нет.</p>';};
   const storeVersions=next=>{localStorage.setItem(versionKey,JSON.stringify(next));versions=next;renderVersions();};
-  const saveVersion=label=>{const next=[...versions,{...parseDraft(JSON.stringify({title:title.value,body:ta.value,notes:notes.value}),true),id:crypto.randomUUID(),at:Date.now(),label:String(label||'').slice(0,100)}].slice(-8);while(next.length>1&&JSON.stringify(next).length>600000)next.shift();storeVersions(next);};
+  const saveVersion=label=>{const next=[...versions,{...parseDraft(JSON.stringify({title:title.value,body:ta.value,notes:notes.value,readerStyle:getStyle?.()}),true),id:crypto.randomUUID(),at:Date.now(),label:String(label||'').slice(0,100)}].slice(-8);while(next.length>1&&JSON.stringify(next).length>600000)next.shift();storeVersions(next);};
   readVersions();renderVersions();
   const found=()=>matches(ta.value,$('#findTerm').value,{caseSensitive:$('#findCase').checked,wholeWord:$('#findWhole').checked});
   const selectMatch=m=>{ta.focus();ta.setSelectionRange(m.start,m.end);const fraction=ta.value.slice(0,m.start).split('\n').length/Math.max(1,ta.value.split('\n').length);ta.scrollTop=Math.max(0,(ta.scrollHeight-ta.clientHeight)*fraction-ta.clientHeight/4);};
@@ -50,24 +51,24 @@ function mount({host,ta,title,notes,key,settings,changed,notify}){
   $('#saveVersion').addEventListener('click',safe(()=>{saveVersion($('#versionLabel').value);notify('Локальная версия сохранена');}));
   $('#writerVersions').addEventListener('click',e=>{const restore=e.target.closest('[data-restore-version]'),remove=e.target.closest('[data-delete-version]');try{
     if(remove){if(confirm('Удалить только эту локальную версию?'))storeVersions(versions.filter(x=>x.id!==remove.dataset.deleteVersion));return;}
-    if(!restore)return;const v=versions.find(x=>x.id===restore.dataset.restoreVersion);if(!v||!confirm('Восстановить версию? Текущее состояние сохранится в истории.'))return;saveVersion('Перед восстановлением');title.value=v.title;ta.value=v.body;notes.value=v.notes;changed();notify('Версия восстановлена в редактор, но ещё не опубликована');
+    if(!restore)return;const v=versions.find(x=>x.id===restore.dataset.restoreVersion);if(!v||!confirm('Восстановить версию? Текущее состояние сохранится в истории.'))return;saveVersion('Перед восстановлением');title.value=v.title;ta.value=v.body;notes.value=v.notes;if(v.readerStyle)setStyle?.(v.readerStyle);changed();notify('Версия восстановлена в редактор, но ещё не опубликована');
   }catch(err){notify(err.message,true);}});
   const templates={scene:'## Новая сцена\n\nМесто и время.\n\nДействие.\n\n---\n\n',dialog:':::dialog Персонаж\n— Реплика.\n\n— Ответ.\n:::\n\n',letter:'## Письмо\n\n> Дорогой читатель,\n> \n> Текст письма.\n\n',poem:'## Название\n\nПервая строка\nВторая строка\n\nНовая строфа\n\n'};
   $('#insertTemplate').addEventListener('click',safe(()=>insert('\n\n'+templates[$('#writerTemplate').value])));
   $('#insertHeading').addEventListener('click',safe(()=>insert('\n\n'+'#'.repeat(Number($('#headingLevel').value))+' '+(ta.value.slice(ta.selectionStart,ta.selectionEnd)||'Заголовок')+'\n\n')));
-  $('#applyTextColor').addEventListener('click',safe(()=>insert(`{color:${$('#textColor').value}}${ta.value.slice(ta.selectionStart,ta.selectionEnd)||'текст'}{/color}`)));
-  $('#applyHighlightColor').addEventListener('click',safe(()=>insert(`{mark:${$('#highlightColor').value}}${ta.value.slice(ta.selectionStart,ta.selectionEnd)||'текст'}{/mark}`)));
-  $('#clearFormatting').addEventListener('click',safe(()=>{if(ta.selectionStart===ta.selectionEnd)return;const text=ta.value.slice(ta.selectionStart,ta.selectionEnd).replace(/\{(?:color|mark):#[0-9a-f]{6}\}|\{\/(?:color|mark)\}/gi,'').replace(/\*\*|__|~~|==|\*/g,'');insert(text);}));
+  $('#applyTextColor').addEventListener('click',safe(()=>{if(visualActions?.isActive())return visualActions.color($('#textColor').value,false);insert(`{color:${$('#textColor').value}}${ta.value.slice(ta.selectionStart,ta.selectionEnd)||'текст'}{/color}`);}));
+  $('#applyHighlightColor').addEventListener('click',safe(()=>{if(visualActions?.isActive())return visualActions.color($('#highlightColor').value,true);insert(`{mark:${$('#highlightColor').value}}${ta.value.slice(ta.selectionStart,ta.selectionEnd)||'текст'}{/mark}`);}));
+  $('#clearFormatting').addEventListener('click',safe(()=>{if(visualActions?.isActive())return visualActions.clear();if(ta.selectionStart===ta.selectionEnd)return;const text=ta.value.slice(ta.selectionStart,ta.selectionEnd).replace(/\{(?:color|mark):#[0-9a-f]{6}\}|\{\/(?:color|mark)\}/gi,'').replace(/\*\*|__|~~|==|\*/g,'');insert(text);}));
   $('#importDraft').addEventListener('change',safe(async()=>{
     const file=$('#importDraft').files?.[0];if(!file)return;
     try{if(file.size>2*1024*1024||!/\.(txt|md|json)$/i.test(file.name))throw new Error('Выберите TXT, MD или JSON до 2 МБ.');const draft=parseDraft(await file.text(),/\.json$/i.test(file.name));if(disposed)return;
       if((ta.value||title.value||notes.value)&&!confirm('Заменить содержимое редактора? Текущая версия сохранится в истории.'))return;
-      if(ta.value||title.value||notes.value)saveVersion('Перед импортом');ta.value=draft.body;if(draft.title)title.value=draft.title;else if(!title.value)title.value=file.name.replace(/\.[^.]+$/,'').slice(0,160);if(/\.json$/i.test(file.name))notes.value=draft.notes;changed();notify('Файл импортирован. Проверьте текст перед публикацией.');
+      if(ta.value||title.value||notes.value)saveVersion('Перед импортом');ta.value=draft.body;if(draft.title)title.value=draft.title;else if(!title.value)title.value=file.name.replace(/\.[^.]+$/,'').slice(0,160);if(/\.json$/i.test(file.name))notes.value=draft.notes;if(draft.readerStyle)setStyle?.(draft.readerStyle);changed();notify('Файл импортирован. Проверьте текст перед публикацией.');
     }finally{$('#importDraft').value='';}
   }));
   const download=(content,ext,type)=>{const url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download=fileName(title.value,ext);document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   $('#exportMarkdown').addEventListener('click',()=>download(ta.value,'md','text/markdown;charset=utf-8'));
-  $('#exportBackup').addEventListener('click',()=>download(JSON.stringify({format:'chernila-draft-v1',title:title.value,body:ta.value,notes:notes.value},null,2),'json','application/json'));
+  $('#exportBackup').addEventListener('click',()=>download(JSON.stringify({format:'chernila-draft-v1',title:title.value,body:ta.value,notes:notes.value,readerStyle:getStyle?.()},null,2),'json','application/json'));
   const applySettings=()=>{
     settings.layout=['split','stack','text','preview'].includes(settings.layout)?settings.layout:(settings.preview?'split':'text');settings.theme=['dark','paper','light'].includes(settings.theme)?settings.theme:'dark';settings.width=Math.max(640,Math.min(1280,Number(settings.width)||1280));settings.spellcheck=settings.spellcheck!==false;
     host.querySelector('.writer-panels').dataset.layout=settings.layout;host.querySelector('.writer-panels').classList.remove('without-preview');host.querySelector('.workshop').dataset.theme=settings.theme;host.style.setProperty('--writer-measure',settings.width+'px');ta.spellcheck=settings.spellcheck;

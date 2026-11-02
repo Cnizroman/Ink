@@ -16,11 +16,11 @@ function render(text,poetry=false,depth=0){
   for(let i=0;i<lines.length;){
     const line=lines[i];
     if(!line.trim()){if(poetry)out.push('<span class="line">&nbsp;</span>');i++;continue;}
-    const block=line.match(/^:::(dialog|note|spoiler|left|center|right)(?: (.*))?$/);
+    const block=line.match(/^:::(dialog|note|spoiler|left|center|right|scene|letter|document|system|memory|dream|epigraph|poem|chat|warning|choice)(?: (.*))?$/);
     if(block){
-      const body=[];i++;while(i<lines.length&&lines[i]!==':::') body.push(lines[i++]);if(lines[i]===':::')i++;
-      const content=render(body.join('\n'),poetry,depth+1), title=inline(block[2]||({dialog:'Диалог',note:'Примечание',spoiler:'Спойлер'}[block[1]]||''));
-      if(block[1]==='spoiler')out.push(`<details class="text-spoiler"><summary>${title}</summary>${content}</details>`);
+      const body=[];i++;let nested=0;while(i<lines.length){if(lines[i]===':::'){if(!nested)break;nested--;}else if(/^:::[a-z]+(?: |$)/.test(lines[i]))nested++;body.push(lines[i++]);}if(lines[i]===':::')i++;
+      const content=render(body.join('\n'),poetry||block[1]==='poem',depth+1), title=inline(block[2]||({dialog:'Диалог',note:'Примечание',spoiler:'Спойлер',choice:'Подробнее',scene:'Новая сцена',letter:'Письмо',document:'Документ',system:'Сообщение системы',memory:'Воспоминание',dream:'Сон',epigraph:'Эпиграф',poem:'Стихотворение',chat:'Переписка',warning:'Предупреждение'}[block[1]]||''));
+      if(['spoiler','choice'].includes(block[1]))out.push(`<details class="text-spoiler${block[1]==='choice'?' text-choice':''}"><summary>${title}</summary>${content}</details>`);
       else if(['left','center','right'].includes(block[1]))out.push(`<div class="text-align-${block[1]}">${content}</div>`);
       else out.push(`<aside class="text-${block[1]}"><div class="text-block-title">${title}</div>${content}</aside>`);
       continue;

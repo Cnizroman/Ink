@@ -195,7 +195,8 @@ create policy works_delete on public.works for delete to authenticated using (au
 drop policy if exists chapters_read on public.chapters;
 create policy chapters_read on public.chapters for select to anon, authenticated
   using ((status = 'published' and exists(select 1 from public.works w where w.id=work_id
-           and coalesce(to_jsonb(w)->>'moderation_status','approved')='approved')) or public.is_platform_admin()
+           and coalesce(to_jsonb(w)->>'moderation_status','approved')='approved'
+           and not coalesce((to_jsonb(w)->>'password_protected')::boolean,false))) or public.is_platform_admin()
          or exists (select 1 from public.works w where w.id = work_id and w.author_id = auth.uid()));
 drop policy if exists chapters_insert on public.chapters;
 create policy chapters_insert on public.chapters for insert to authenticated

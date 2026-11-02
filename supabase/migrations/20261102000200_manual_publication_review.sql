@@ -90,7 +90,7 @@ create policy works_read on public.works for select to anon,authenticated using
 drop policy if exists chapters_read on public.chapters;
 create policy chapters_read on public.chapters for select to anon,authenticated using
  (public.is_platform_admin() or exists(select 1 from public.works w where w.id=work_id and
-   (w.author_id=auth.uid() or (w.moderation_status='approved' and chapters.status='published'))));
+   (w.author_id=auth.uid() or (w.moderation_status='approved' and chapters.status='published' and not coalesce((to_jsonb(w)->>'password_protected')::boolean,false)))));
 
 create table if not exists public.publication_reviews(
  id uuid primary key default gen_random_uuid(),
