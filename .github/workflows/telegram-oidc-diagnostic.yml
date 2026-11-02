@@ -1,0 +1,37 @@
+name: Telegram OIDC HTTP diagnosis
+
+# One bounded anonymous probe when this diagnostic changes on the working branch.
+# No production sessions or secrets are used; never run on pull_request_target.
+on:
+  push:
+    branches: [arena/380f637e-ink]
+    paths:
+      - .github/workflows/telegram-oidc-diagnostic.yml
+      - scripts/telegram-oidc-probe.cjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Inspect anonymous HTTP responses (not a login test)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Collect sanitized HTTP observations
+        run: node scripts/telegram-oidc-probe.cjs
+      - name: Write sanitized report
+        if: always()
+        shell: bash
+        run: |
+          echo '## Telegram anonymous HTTP diagnosis' >> "$GITHUB_STEP_SUMMARY"
+          echo 'This does not test identity linking or successful user authorization.' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f .cache/telegram-oidc-report.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat .cache/telegram-oidc-report.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
