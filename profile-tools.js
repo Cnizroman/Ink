@@ -21,6 +21,27 @@ function socialIcon(network){
   return `<svg class="social-icon" data-social-icon="${id}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${content}</svg>`;
 }
 const providers=n=>n.provider==='twitter'?['twitter','x']:n.provider?[n.provider]:[];
+// Parse server-issued authorization URLs without ever inventing callback/state/PKCE.
+function socialAuthTarget(raw,network,expectedCallback){
+  if(typeof raw!=='string'||!raw)throw new Error('Сервис OAuth не вернул ссылку авторизации. Обновите страницу и повторите.');
+  // Some integrations return an HTML-escaped query in a JSON string. Decode only
+  // literal parameter separators, never percent-encoded values or arbitrary HTML.
+  const value=network==='telegram'?raw.replace(/&(?:amp;)+(?=[a-zA-Z_][a-zA-Z0-9_.:-]*=)/g,'&'):raw;
+  let target;try{target=new URL(value);}catch(_){throw new Error('Сервис OAuth вернул некорректную ссылку авторизации.');}
+  if(target.protocol!=='https:'||target.username||target.password)throw new Error('Сервис OAuth вернул небезопасную ссылку авторизации.');
+  if(network==='telegram'){
+    for(const name of ['client_id','redirect_uri','response_type','scope','state']){
+      const values=target.searchParams.getAll(name);
+      if(values.length!==1||!values[0].trim())throw new Error('Сервер вернул некорректную ссылку Telegram: требуется единственный непустой параметр '+name+'. Начните подключение заново; если ошибка повторится, сообщите её текст.');
+    }
+    if(target.searchParams.get('redirect_uri')!==expectedCallback)throw new Error('Сервер вернул неверный callback Telegram. Проверьте Callback URL провайдера в настройках Auth.');
+    if(target.searchParams.get('response_type')!=='code'||!target.searchParams.get('scope').split(/\s+/).includes('openid'))throw new Error('Сервер вернул неверный режим авторизации Telegram: нужны code и openid.');
+    // GoTrue stores the site's return URL in flow state before returning this URL.
+    // These are Auth API controls, not Telegram authorization parameters.
+    for(const name of [...target.searchParams.keys()])if(['redirect_to','skip_http_redirect'].includes(name.toLowerCase()))target.searchParams.delete(name);
+  }
+  return target;
+}
 function identityLink(n,identity){
   const data=identity?.identity_data||{};let value='';
   if(['github','twitch','twitter'].includes(n.id))value=data.user_name||data.preferred_username||'';
@@ -84,5 +105,5 @@ function mountMedia(host,slot,existing,onChange,onError){
     dispose(){disposed=true;revision++;image?.close?.();}
   };
 }
-const api={networks,socialIcon,providers,identityLink,socialLink,cleanSocialLinks,validateImage,cropRect,mountMedia};root.InkProfileTools=api;if(typeof module!=='undefined')module.exports=api;
+const api={socialAuthTarget,networks,socialIcon,providers,identityLink,socialLink,cleanSocialLinks,validateImage,cropRect,mountMedia};root.InkProfileTools=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

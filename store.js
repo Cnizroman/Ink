@@ -330,9 +330,7 @@ const Store={
       const query=new URLSearchParams({provider,redirect_to:redirect.href,skip_http_redirect:'true'});
       if(n.scopes)query.set('scopes',n.scopes); // No Telegram phone number or bot messaging permission.
       const data=await sbFetch('/auth/v1/user/identities/authorize?'+query,{redirect:'error'});
-      if(typeof data?.url!=='string'||!data.url)throw new Error('Сервис OAuth не вернул ссылку авторизации. Обновите страницу и повторите.');
-      let target;try{target=new URL(data.url);}catch(_){throw new Error('Сервис OAuth вернул некорректную ссылку авторизации.');}
-      if(target.protocol!=='https:'||target.username||target.password)throw new Error('Сервис OAuth вернул небезопасную ссылку авторизации.');
+      const target=InkProfileTools.socialAuthTarget(data?.url,network,SB_URL+'/auth/v1/callback');
       if(this.session?.authorId!==me.id)throw new Error('Аккаунт изменился. Откройте профиль заново.');
       location.assign(target.href);
     }catch(e){
