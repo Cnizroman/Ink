@@ -5,10 +5,11 @@
   "description": "Static literary platform; Node dependencies are for tests only",
   "scripts": {
     "test": "node --test tests/*.test.cjs",
-    "test:sql": "node tests/schema.cjs && node tests/moderation-schema.cjs && node tests/story-security.cjs",
-    "test:browser": "node tests/browser.cjs && node tests/cloud-profile.cjs && node tests/browser-auth.cjs && node tests/browser-oauth.cjs && node tests/browser-story-studio.cjs && node tests/browser-story-design-v2.cjs",
+    "test:sql": "node tests/schema.cjs && node tests/moderation-schema.cjs && node tests/story-security.cjs && node tests/workshop-freedom-sql.cjs",
+    "test:browser": "node tests/browser.cjs && node tests/cloud-profile.cjs && node tests/browser-auth.cjs && node tests/browser-oauth.cjs && node tests/browser-story-studio.cjs && node tests/browser-story-design-v2.cjs && node tests/browser-workshop-freedom.cjs",
     "assets:social-card": "node scripts/render-social-card.cjs",
-    "build:story-schema": "node scripts/build-story-schema.cjs"
+    "build:story-schema": "node scripts/build-story-schema.cjs",
+    "build:freedom-schema": "node scripts/build-freedom-migration.cjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.14",

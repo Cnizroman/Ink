@@ -13,7 +13,7 @@ function harness({db,storage,remote}={}){
   ctx.window=ctx;
   if(remote) ctx.CHERNILA_SUPABASE_CONFIG={url:'https://example.invalid',anonKey:'public'};
   vm.createContext(ctx);
-  for(const file of ['data.js','profile-tools.js','story-tools.js','store.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),ctx);
+  for(const file of ['data.js','profile-tools.js','workshop-freedom.js','story-tools.js','store.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),ctx);
   return {ctx,store:ctx.Store,storage:values,ephemeral};
 }
 async function founder(store){await store.login({login:'cnizroman',password:'demo1234'});}
@@ -386,7 +386,14 @@ test('studio v2 capability persists full styles; v1 preserves old settings and r
   const remote=async(url,opts={})=>{const p=new URL(url).pathname;let data=[];if(p.endsWith('/moderation_version'))data=1;if(p.endsWith('/story_studio_version'))data=version;if(p.endsWith('/publication_snapshot'))data={works:[row],chapters:[]};if(p.endsWith('/profiles'))data=[{id:'writer',username:'writer',role:'author'}];if(p.endsWith('/works')){if(['POST','PATCH'].includes(opts.method)){const payload=JSON.parse(opts.body);writes.push(payload);data=[{...row,...payload}];}else data=[row];}return {ok:true,text:async()=>JSON.stringify(data)};};
   const {store,ctx}=harness({remote,storage:new Map([['chernila_session_v2',JSON.stringify({authorId:'writer',token:'fake'})]])});await store.init();assert.equal(store.studioReady,true);assert.equal(store.studioVersion,version);
   const style=ctx.InkStory.clean({font:'caveat',pageLayout:'custom',texture:'grid',divider:'moon',size:33}),work={...store.state.works.find(w=>w.id==='story'),readerStyle:style};
-  if(version===2){await store.upsertWork(work);assert.deepEqual(clone(writes[0].reader_style),clone(style));assert.deepEqual(clone(store.state.works.find(w=>w.id==='story').readerStyle),clone(style));}
+  if(version===2){await store.upsertWork(work);assert.deepEqual(clone(writes[0].reader_style),clone(ctx.InkStory.v2(style)));assert.deepEqual(clone(store.state.works.find(w=>w.id==='story').readerStyle),clone(style));}
   else{await assert.rejects(store.upsertWork(work),/STORY_DESIGN_UPGRADE/);assert.equal(writes.length,0);work.readerStyle={palette:'plum',font:'mono'};await store.upsertWork(work);assert.equal(writes[0].reader_style.palette,'plum');assert.equal(Object.keys(writes[0].reader_style).length,9);}
  }
+});
+
+test('studio v3 asset API strips untrusted fields, scopes own library and forwards password-gated reads without persisting bytes',async()=>{
+ const requests=[],id='11111111-2222-3333-4444-555555555555',remote=async(url,opts={})=>{const u=new URL(url);requests.push({u,opts});let data=[];if(u.pathname.endsWith('/moderation_version'))data=1;if(u.pathname.endsWith('/story_studio_version'))data=3;if(u.pathname.endsWith('/profiles'))data=[{id:'writer',username:'writer',role:'author'}];if(u.pathname.endsWith('/publication_snapshot'))data={works:[],chapters:[]};return {ok:true,text:async()=>JSON.stringify(data)};};
+ const {store,storage}=harness({remote});await store.init();store.state.authors.push({id:'writer',username:'writer',role:'author'});store.setSession({authorId:'writer',token:'fixture-token'});const data='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l8sAAAAASUVORK5CYII=';
+ await store.putAuthorAsset({id,kind:'cover',label:'Обложка',mime:'image/png',data,owner_id:'forged',role:'admin'});const put=requests.find(r=>r.u.pathname.endsWith('/put_author_asset'));assert.deepEqual(Object.keys(JSON.parse(put.opts.body).p_asset).sort(),['data','id','kind','label','mime']);assert.equal(put.opts.headers.Authorization,'Bearer fixture-token');await store.listAuthorAssets();assert.equal(requests.find(r=>r.u.pathname.endsWith('/author_assets')).u.searchParams.get('owner_id'),'eq.writer');await store.ownAuthorAsset(id);assert.ok(requests.filter(r=>r.u.pathname.endsWith('/author_assets')).at(-1).u.searchParams.get('select').includes('owner_id'));
+ await store.workAuthorAssets(id,false,'fixture-password');assert.deepEqual(JSON.parse(requests.find(r=>r.u.pathname.endsWith('/get_work_author_assets')).opts.body),{p_work_id:id,p_password:'fixture-password',p_cover_only:false});await store.deleteAuthorAsset(id);assert.deepEqual(JSON.parse(requests.find(r=>r.u.pathname.endsWith('/delete_author_asset')).opts.body),{p_id:id});store.save();assert.ok(![...storage.values()].join('').includes(data));store.studioVersion=2;await assert.rejects(store.putAuthorAsset({id,kind:'cover',label:'x',mime:'image/png',data}),/WORKSHOP_FREEDOM/);assert.deepEqual(clone(await store.workAuthorAssets(id)),[]);
 });

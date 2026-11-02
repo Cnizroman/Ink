@@ -201,7 +201,7 @@ const Store={
 
   /* ---------- Сессия / аккаунты ---------- */
   currentUser(){ if(!this.session||(this.mode==='supabase'&&!this.session.token)) return null; return this.state.authors.find(a=>a.id===this.session.authorId)||null; },
-  setSession(s){ if(!s||(s.authorId||null)!==(this.session?.authorId||null))this.sessionEpoch++;if(s?.token&&!s.expiresAt)s={...s,expiresAt:tokenExpiry(s.token)};this.session=s; if(s){localStorage.setItem(LS_SESSION,JSON.stringify(s)); sbToken=s.token||null;} else {localStorage.removeItem(LS_SESSION); sbToken=null;} },
+  setSession(s){ if(!s||(s.authorId||null)!==(this.session?.authorId||null)){this.sessionEpoch++;window.InkFreedom?.clear();}if(s?.token&&!s.expiresAt)s={...s,expiresAt:tokenExpiry(s.token)};this.session=s; if(s){localStorage.setItem(LS_SESSION,JSON.stringify(s)); sbToken=s.token||null;} else {localStorage.removeItem(LS_SESSION); sbToken=null;} },
 
   async refreshSession(){
     const original=this.session;if(!original?.refreshToken)return;
@@ -282,6 +282,15 @@ const Store={
     return this.currentUser();
   },
   logout(){ this.unlockedStories.clear();this.setSession(null);if(this.mode==='supabase'){this.state.works=this.state.works.filter(w=>this.isWorkPublic(w));this.state.chapters=this.state.chapters.filter(c=>c.status==='published'&&this.state.works.some(w=>w.id===c.workId&&!w.passwordProtected));this.save();} },
+  async putAuthorAsset(r){
+    if(!this.currentUser()||!window.InkFreedom?.validData(r.kind,r.mime,r.data))throw new Error('Некорректный авторский файл.');
+    if(this.studioVersion<3)throw new Error('Импорт файлов требует обновления мастерской: WORKSHOP_FREEDOM_UPGRADE.sql.');
+    return sbFetch('/rest/v1/rpc/put_author_asset',{method:'POST',body:JSON.stringify({p_asset:{id:r.id,label:r.label,kind:r.kind,mime:r.mime,data:r.data}})});
+  },
+  async listAuthorAssets(){const id=this.currentUser()?.id;if(!id)throw new Error('Войдите в аккаунт.');return (await sbFetch('/rest/v1/author_assets?owner_id=eq.'+encodeURIComponent(id)+'&select=id,label,kind,mime&order=created_at.desc&limit=64'))||[];},
+  async deleteAuthorAsset(id){return sbFetch('/rest/v1/rpc/delete_author_asset',{method:'POST',body:JSON.stringify({p_id:id})});},
+  async ownAuthorAsset(id){const rows=await sbFetch('/rest/v1/author_assets?id=eq.'+encodeURIComponent(id)+'&select=id,owner_id,label,kind,mime,data');return rows?.[0]||null;},
+  async workAuthorAssets(id,coverOnly=false,password=null){if(this.studioVersion<3)return [];return (await sbFetch('/rest/v1/rpc/get_work_author_assets',{method:'POST',body:JSON.stringify({p_work_id:id,p_password:password,p_cover_only:coverOnly})}))||[];},
   async uploadProfileImage(blob,slot){
     const me=this.currentUser();if(!me)throw new Error('Войдите в аккаунт.');
     if(!['avatarUrl','bannerUrl'].includes(slot)||!blob||!['image/png','image/jpeg','image/webp'].includes(blob.type)||!blob.size||blob.size>1024*1024)throw new Error('Недопустимое изображение.');
@@ -427,10 +436,14 @@ const Store={
     if(!user||w.authorId!==user.id||(ex&&ex.authorId!==user.id))throw new Error('Можно редактировать только свои произведения.');
     if(!String(w.title||'').trim())throw new Error('Укажите название.');
     if(!w.legacyUrl)this.requireModeration();
+    if(!String(w.genre||'').trim()||String(w.genre).trim().length>60)throw new Error('Жанр — от 1 до 60 символов. Можно вписать свой.');
+    if(window.InkFreedom)w={...w,genre:w.genre.trim(),cover:window.InkFreedom.cleanCover(w.cover)};
+    if(this.mode==='supabase'&&this.studioVersion<3&&(w.readerStyle?.customFonts?.length||w.readerStyle?.customDividers?.length||w.cover?.imageAsset))throw new Error('Свои файлы требуют обновления: WORKSHOP_FREEDOM_UPGRADE.sql.');
     w={...w,moderationStatus:user.role==='admin'?'approved':'draft',moderationNote:'',moderationRevision:(ex?.moderationRevision||0)+1,legacyUrl:safeLegacyUrl(w.id,w.legacyUrl),featured:user.role==='admin'?!!w.featured:!!ex?.featured,updatedAt:today()};
+    if(this.mode==='local'&&window.InkFreedom){await window.InkFreedom.assertOwnFiles(w.readerStyle,w.cover);if(this.sessionEpoch!==epoch)throw new Error('Аккаунт изменился. Обновите страницу.');}
     const row={id:/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(w.id)?w.id:undefined,author_id:w.authorId,title:w.title,subtitle:w.subtitle,type:w.type,genre:w.genre,tags:w.tags,description:w.description,status:w.status,age_rating:w.ageRating,legacy_url:w.legacyUrl,featured:w.featured,cover:w.cover};
     if(this.mode==='supabase'){
-      if(this.studioReady&&!w.legacyUrl)row.reader_style=this.studioVersion>=2?window.InkStory.clean(w.readerStyle||ex?.readerStyle):window.InkStory.legacy(w.readerStyle||ex?.readerStyle);
+      if(this.studioReady&&!w.legacyUrl)row.reader_style=this.studioVersion>=3?window.InkStory.clean(w.readerStyle||ex?.readerStyle):this.studioVersion>=2?window.InkStory.v2(w.readerStyle||ex?.readerStyle):window.InkStory.legacy(w.readerStyle||ex?.readerStyle);
       else if(w.readerStyle&&JSON.stringify(w.readerStyle)!==JSON.stringify(ex?.readerStyle)&&JSON.stringify(w.readerStyle)!=='{}')throw new Error('Для сохранения авторского стиля примените SQL настройки мастерской.');
       let saved;
       if(w.legacyUrl) await sbFetch('/rest/v1/founder_work_settings?on_conflict=work_id',{method:'POST',headers:sbHeaders({'Prefer':'resolution=merge-duplicates,return=representation'}),body:JSON.stringify({work_id:w.id,author_id:user.id,settings:row})});
@@ -445,7 +458,7 @@ const Store={
     if(this.sessionEpoch!==epoch)throw new Error('Аккаунт изменился. Откройте историю заново.');
     if(data?.error)throw new Error(({incorrect_password:'Неверный пароль.',rate_limit:'Слишком много попыток. Попробуйте через 5 минут.',not_found:'История недоступна или ожидает проверки.',not_locked:'Настройки доступа изменились. Обновите страницу.'})[data.error]||'Не удалось открыть историю.');
     if(!data?.work||data.work.id!==id||!Array.isArray(data.chapters))throw new Error('Сервер не подтвердил доступ.');
-    const w=this.state.works.find(w=>w.id===id);Object.assign(w,mapWork(data.work));this.state.chapters=this.state.chapters.filter(c=>c.workId!==id).concat(data.chapters.map(mapChapter));this.unlockedStories.set(id,{revision:w.moderationRevision,until:Date.now()+15*60*1000});return w;
+    const w=this.state.works.find(w=>w.id===id);Object.assign(w,mapWork(data.work));this.state.chapters=this.state.chapters.filter(c=>c.workId!==id).concat(data.chapters.map(mapChapter));this.unlockedStories.set(id,{revision:w.moderationRevision,until:Date.now()+15*60*1000});await window.InkFreedom?.hydrate(w,false,password);return w;
   },
   async setStoryPassword(id,password){
     const w=this.assertOwnWork(id);if(w.legacyUrl)throw new Error('Пароль исходного HTML-файла меняется отдельно.');
@@ -471,6 +484,7 @@ const Store={
     if(ex&&ex.workId!==c.workId)throw new Error('Нельзя перенести чужую главу.');
     if(!String(c.title||'').trim()||c.title.length>160||!String(c.body||'').trim()||c.body.length>400000||!['draft','published'].includes(c.status))throw new Error('Проверьте заголовок, текст и статус главы.');
     const w=this.state.works.find(x=>x.id===c.workId);
+    if(this.mode==='local'&&window.InkFreedom){await window.InkFreedom.assertOwnFiles({}, {},c.body);if(this.sessionEpoch!==epoch)throw new Error('Аккаунт изменился. Обновите страницу.');}
     const row={id:/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(c.id)?c.id:undefined,work_id:c.workId,title:c.title,body:c.body,sort_order:c.order,status:c.status};
     if(this.mode==='supabase'){const saved=ex?await sbFetch('/rest/v1/chapters?id=eq.'+c.id,{method:'PATCH',body:JSON.stringify(row)}):await sbFetch('/rest/v1/chapters',{method:'POST',body:JSON.stringify(row)});if(!saved?.[0])throw new Error('Сервер не подтвердил сохранение главы.');if(this.sessionEpoch!==epoch)throw new Error('Аккаунт изменился. Обновите страницу.');c=mapChapter(saved[0]);const parents=await sbFetch('/rest/v1/works?id=eq.'+c.workId+'&select=*');if(!parents?.[0])throw new Error('Глава сохранена, но статус проверки не получен. Обновите страницу.');if(this.sessionEpoch!==epoch)throw new Error('Аккаунт изменился. Обновите страницу.');Object.assign(w,mapWork(parents[0]));}
     else if(w){w.moderationRevision=(w.moderationRevision||1)+1;if(this.currentUser().role==='admin'){w.moderationStatus='approved';}else if(c.status==='published'||ex?.status==='published'){w.moderationStatus=c.status==='published'?'pending':'draft';w.moderationNote='';w.submittedAt=c.status==='published'?new Date().toISOString():null;}}

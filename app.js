@@ -47,7 +47,7 @@ function renderText(text,poetry){return InkText.render(text,poetry);}
 /* ---------- компоненты ---------- */
 const profileStyle=a=>{const c=Store.cleanCustomization(a.customization||{});return `--profile-accent:${c.accent};--profile-banner:${c.bannerColor}`;};
 const ava=(a,cls='')=>a.customization?.avatarUrl?`<span class="avatar ${cls}"><img src="${esc(a.customization.avatarUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>`:`<span class="avatar ${cls}" style="background:linear-gradient(135deg,hsl(${a.hue??38} 45% 62%),hsl(${(a.hue??38)+40} 40% 38%))" aria-hidden="true">${esc((a.displayName||'?').trim()[0]||'?')}</span>`;
-function coverHTML(w){const a=author(w.authorId);return `<div class="cover" style="background:linear-gradient(150deg,${esc(w.cover?.from||'#222')},${esc(w.cover?.to||'#c8a96e')})">
+function coverHTML(w){InkFreedom.scheduleCovers();const a=author(w.authorId),c=InkFreedom.cleanCover(w.cover),image=c.imageAsset;return `<div class="cover ${image?'has-author-cover':''} ${image&&!c.overlay?'cover-art-only':''}" style="--cover-ratio:${c.ratio||5/6};background:linear-gradient(150deg,${c.from},${c.to})">${image?`<img data-author-asset="${image}" data-cover-work="${esc(w.id)}" alt="Обложка: ${esc(w.title)}" loading="lazy" style="object-fit:${c.fit}" ${InkFreedom.url(image)?`src="${InkFreedom.url(image)}"`:''}>`:''}
   <span class="cov-type">${w.legacyUrl?'':esc(TYPE_LABEL[w.type]||w.type)+' · '}${esc(w.genre)}</span><span class="cov-symbol">${esc(w.cover?.symbol||'✦')}</span>
   <span><span class="cov-title">${esc(w.title)}</span><span class="cov-author" style="display:block">${esc(a.displayName)}</span></span></div>`}
 const groupWorks=(g,all=false)=>(g.workIds||[]).map(work).filter(w=>w&&w.authorId===g.authorId&&(all||Store.isWorkPublic(w)));
@@ -411,7 +411,7 @@ function workFormHTML(w){
     <label class="field">Название *<input class="input" name="title" required maxlength="140" value="${esc(w.title)}" placeholder="Как называется ваша история?"></label>
     <label class="field">Подзаголовок<input class="input" name="subtitle" maxlength="160" value="${esc(w.subtitle||'')}" placeholder="Цикл, часть, уточнение…"></label>
     <div class="grid two">${w.legacyUrl?`<input type="hidden" name="type" value="${esc(w.type)}">`:`<label class="field">Тип *<select name="type">${window.CHERNILA_SEED.types.map(t=>`<option value="${t.id}" ${w.type===t.id?'selected':''}>${t.label}</option>`).join('')}</select></label>`}
-    <label class="field">Жанр *<select name="genre">${window.CHERNILA_SEED.genres.map(g=>`<option ${w.genre===g?'selected':''}>${g}</option>`).join('')}</select></label></div>
+    <label class="field">Жанр * · выберите или впишите свой<input class="input" name="genre" list="workGenres" required maxlength="60" value="${esc(w.genre)}" placeholder="Например: философское фэнтези"><datalist id="workGenres">${[...new Set([...window.CHERNILA_SEED.genres,...publicWorks().map(w=>w.genre)])].map(g=>`<option value="${esc(g)}"></option>`).join('')}</datalist></label></div>
     <div class="grid two"><label class="field">Статус<select name="status">${Object.entries(STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${w.status===k?'selected':''}>${v}</option>`).join('')}</select></label>
     <label class="field">Возрастной рейтинг<select name="ageRating">${['0+','6+','12+','16+','18+'].map(r=>`<option ${w.ageRating===r?'selected':''}>${r}</option>`).join('')}</select></label></div>
     <label class="field">Теги (через запятую)<input class="input" name="tags" value="${esc((w.tags||[]).join(', '))}" placeholder="память, город, первая любовь"></label>
@@ -419,6 +419,7 @@ function workFormHTML(w){
     <div><span class="small" style="font-weight:800;color:var(--muted)">Обложка: градиент и символ</span>
       <div class="cover-picker" id="coverPick" style="margin:10px 0">${COVERS.map(([f,t])=>`<button type="button" class="swatch ${w.cover?.from===f?'on':''}" data-from="${f}" data-to="${t}" style="background:linear-gradient(140deg,${f},${t})" aria-label="Градиент обложки"></button>`).join('')}</div>
       <div class="chiprow" id="symbolPick">${SYMBOLS.map(s=>`<button type="button" class="chipbtn ${w.cover?.symbol===s?'on':''}" data-s="${s}" style="font-size:1.1rem">${s}</button>`).join('')}</div></div>
+    <div id="coverStudio"></div>
     ${!w.legacyUrl?'<details class="author-design"><summary>Авторское оформление · конструктор страниц</summary><p class="small muted">Стиль применяется ко всем главам. Посетитель сможет выбрать личную тему чтения.</p><div id="workDesigner"></div></details>':''}
     <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" type="submit">${w.id?'Сохранить произведение':'Создать и перейти к главам →'}</button><a class="btn ghost" href="#/studio/works">Отмена</a></div>
   </form>`;
@@ -426,12 +427,13 @@ function workFormHTML(w){
 function bindWorkForm(w){
   const workId=w?.id||Store.uid();let designChanged=false;const designer=$('#workDesigner')?InkStory.mount($('#workDesigner'),w?.readerStyle,()=>designChanged=true):null;
   let cover={...(w?w.cover:{from:COVERS[0][0],to:COVERS[0][1],symbol:'✦'})};
-  $('#coverPick').addEventListener('click',e=>{const b=e.target.closest('.swatch');if(!b)return;cover.from=b.dataset.from;cover.to=b.dataset.to;$$('.swatch').forEach(x=>x.classList.toggle('on',x===b))});
-  $('#symbolPick').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(!b)return;cover.symbol=b.dataset.s;$$('#symbolPick .chipbtn').forEach(x=>x.classList.toggle('on',x===b))});
+  const art=InkCover.mount($('#coverStudio'),cover,c=>cover=c,Store.currentUser().id+':'+workId);disposePage=()=>{art.dispose();designer?.dispose();};
+  $('#coverPick').addEventListener('click',e=>{const b=e.target.closest('.swatch');if(!b)return;cover.from=b.dataset.from;cover.to=b.dataset.to;art.set(cover);$$('.swatch').forEach(x=>x.classList.toggle('on',x===b))});
+  $('#symbolPick').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(!b)return;cover.symbol=b.dataset.s;art.set(cover);$$('#symbolPick .chipbtn').forEach(x=>x.classList.toggle('on',x===b))});
   $('#workForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target);const u=me();
     const data={...(designer&&(designChanged||Store.mode==='local'||Store.studioReady)?{readerStyle:designer.read()}:{}),id:workId,authorId:u.id,title:f.get('title').trim(),subtitle:f.get('subtitle').trim(),type:f.get('type'),genre:f.get('genre'),status:f.get('status'),ageRating:f.get('ageRating'),
       tags:f.get('tags').split(',').map(t=>t.trim()).filter(Boolean),description:f.get('description').trim(),cover,legacyUrl:w?w.legacyUrl:null,featured:w?!!w.featured:false,views:w?w.views||0:0,createdAt:w?w.createdAt:Store.today()};
-    const btn=e.target.querySelector('[type=submit]');btn.disabled=true;try{await Store.upsertWork(data); toast(w?(u.role==='admin'?'Произведение сохранено':'Карточка сохранена. Статус публикации указан в мастерской.'):'Произведение создано! Теперь добавьте первую главу ✒'); location.hash='#/studio/work/'+data.id;}catch(err){toast(err.message,true);}finally{btn.disabled=false;}});
+    const btn=e.target.querySelector('[type=submit]');btn.disabled=true;try{if(designer?.busy())throw new Error('Дождитесь завершения импорта шрифта или разделителя.');data.cover=await art.read();await Store.upsertWork(data); toast(w?(u.role==='admin'?'Произведение сохранено':'Карточка сохранена. Статус публикации указан в мастерской.'):'Произведение создано! Теперь добавьте первую главу ✒'); location.hash='#/studio/work/'+data.id;}catch(err){toast(err.message,true);}finally{btn.disabled=false;}});
 }
 function pageStudioNew(){ if(!guardStudio()) return; setNav('studio');
   $('#app').innerHTML=`<div class="wrap"><div class="studio-grid">${studioSide('new')}<div><div class="kicker">Студия автора</div><h1 style="font-size:2.3rem;margin:10px 0 8px">Новое произведение</h1>
@@ -701,6 +703,7 @@ function route(){
     else if(seg[0]==='studio'&&seg[1]==='chapter'&&seg[2]&&seg[3]) pageStudioChapter(seg[2],seg[3]);
     else page404();
   }catch(err){ console.error(err); $('#app').innerHTML=`<div class="wrap"><div class="empty" style="margin-top:60px"><span class="big">✒</span>Чернила пролились: ${esc(err.message)}<br><br><a class="btn" href="#/">На главную</a></div></div>`; }
+  InkFreedom.hydratePage().catch(()=>{});if(seg[0]==='read'&&seg[1]){const w=work(seg[1]);if(w&&Store.canReadStory(w))InkFreedom.hydrate(w).catch(()=>{});}
   $('#app').focus?.({preventScroll:true});
 }
 function bindLiveSearch(){
