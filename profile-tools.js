@@ -2,7 +2,7 @@
 (function(root){
 'use strict';
 const networks=[
-  {id:'telegram',label:'Telegram',hosts:['t.me','telegram.me'],base:'https://t.me/',hint:'@username',provider:null},
+  {id:'telegram',label:'Telegram',hosts:['t.me','telegram.me'],base:'https://t.me/',hint:'@username',provider:'custom:telegram',scopes:'openid profile'},
   {id:'vk',label:'ВКонтакте',hosts:['vk.com','vk.ru'],base:'https://vk.com/',hint:'Короткое имя или id',provider:null},
   {id:'youtube',label:'YouTube',hosts:['youtube.com','youtu.be'],base:'https://www.youtube.com/@',hint:'@канал',provider:null},
   {id:'instagram',label:'Instagram',hosts:['instagram.com'],base:'https://www.instagram.com/',hint:'@username',provider:null},
@@ -24,6 +24,7 @@ const providers=n=>n.provider==='twitter'?['twitter','x']:n.provider?[n.provider
 function identityLink(n,identity){
   const data=identity?.identity_data||{};let value='';
   if(['github','twitch','twitter'].includes(n.id))value=data.user_name||data.preferred_username||'';
+  if(n.id==='telegram'){const handle=data.preferred_username||data.user_name;if(typeof handle==='string'&&/^[a-zA-Z0-9_]{1,32}$/.test(handle))value=handle;}
   if(n.id==='discord'){const id=String(data.provider_id||data.sub||data.id||'');if(/^\d{15,22}$/.test(id))value=id;}
   if(n.id==='facebook'){const id=String(data.provider_id||data.sub||data.id||'');if(/^\d+$/.test(id))value='https://www.facebook.com/profile.php?id='+id;}
   if(n.id==='linkedin')value=data.vanity_name||data.public_profile_url||'';

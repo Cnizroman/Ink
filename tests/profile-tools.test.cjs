@@ -17,11 +17,15 @@ test('image constraints reject unsafe types, oversized files and invalid crop ge
 
 test('verified identity links are derived safely and X aliases match actual providers',()=>{
  const {identityLink,providers}=require('../profile-tools.js'),find=id=>networks.find(n=>n.id===id);
- assert.deepEqual(providers(find('twitter')),['twitter','x']);assert.deepEqual(providers(find('telegram')),[]);
+ assert.deepEqual(providers(find('twitter')),['twitter','x']);assert.deepEqual(providers(find('telegram')),['custom:telegram']);
  assert.equal(identityLink(find('github'),{identity_data:{user_name:'real_owner'}}).url,'https://github.com/real_owner');
  assert.equal(identityLink(find('github'),{identity_data:{user_name:'javascript:alert(1)'}}),null);
  assert.equal(identityLink(find('discord'),{identity_data:{sub:'123456789012345678'}}).url,'https://discord.com/users/123456789012345678');
  assert.equal(identityLink(find('discord'),{identity_data:{user_name:'not-a-discord-id'}}),null);
+ assert.equal(identityLink(find('telegram'),{identity_data:{preferred_username:'real_owner'}}).url,'https://t.me/real_owner');
+ assert.equal(identityLink(find('telegram'),{identity_data:{sub:'12345678',name:'Display name'}}),null);
+ assert.equal(identityLink(find('telegram'),{identity_data:{preferred_username:'https://evil.test'}}),null);
+ assert.equal(identityLink(find('telegram'),{identity_data:{preferred_username:'someone?start=evil'}}),null);
  assert.equal(identityLink(find('linkedin'),{identity_data:{public_profile_url:'https://evil.test/'}}),null);
 });
 

@@ -314,7 +314,12 @@ const Store={
     if(this.mode!=='supabase')throw new Error('Настоящее подключение доступно только с общей базой Supabase. Локально можно сохранить публичную ссылку.');
     const me=this.currentUser(),n=InkProfileTools.networks.find(n=>n.id===network);
     if(!me||!n?.provider)throw new Error('Эта сеть доступна только как публичная ссылка, не как OAuth-подключение.');
-    const available=await this.socialProviders(),provider=InkProfileTools.providers(n).find(p=>available.includes(p));if(!provider)throw new Error(n.label+': авторизация ещё не настроена владельцем сайта.');
+    // /settings lists built-in providers only, not custom OIDC providers. Never
+    // fabricate a 'configured' result: the authenticated authorize endpoint is
+    // authoritative for the explicitly supported custom provider.
+    const custom=n.provider==='custom:telegram',available=custom?[]:await this.socialProviders();
+    const provider=custom?n.provider:InkProfileTools.providers(n).find(p=>available.includes(p));
+    if(!provider)throw new Error(n.label+': авторизация ещё не настроена владельцем сайта.');
     const user=await sbFetch('/auth/v1/user');if(user.id!==me.id)throw new Error('Войдите в свой аккаунт заново.');
     if(!user.email_confirmed_at)throw new Error('Сначала подтвердите email аккаунта.');
     const nonce=uid(),redirect=new URL(location.pathname,location.origin);redirect.searchParams.set('ink_social',nonce);
@@ -323,6 +328,7 @@ const Store={
     try{
       // Like auth-js linkIdentity: fetch JSON first, navigate only after a validated URL.
       const query=new URLSearchParams({provider,redirect_to:redirect.href,skip_http_redirect:'true'});
+      if(n.scopes)query.set('scopes',n.scopes); // No Telegram phone number or bot messaging permission.
       const data=await sbFetch('/auth/v1/user/identities/authorize?'+query,{redirect:'error'});
       if(typeof data?.url!=='string'||!data.url)throw new Error('Сервис OAuth не вернул ссылку авторизации. Обновите страницу и повторите.');
       let target;try{target=new URL(data.url);}catch(_){throw new Error('Сервис OAuth вернул некорректную ссылку авторизации.');}
@@ -332,6 +338,7 @@ const Store={
     }catch(e){
       sessionStorage.removeItem('chernila_social_pending');
       if(e.code==='manual_linking_disabled')throw new Error('Supabase запретил привязку: включите Allow manual linking.');
+      if(custom&&((e.status===400&&e.code==='validation_failed')||e.code==='provider_disabled'||e.code==='custom_provider_not_found'))throw new Error('Telegram: проверьте, что в Auth → Providers создан и включён OIDC-провайдер custom:telegram. Если Custom Providers отсутствует, нужна проверка доступности этой возможности в проекте.');
       if(e.code==='provider_disabled')throw new Error(n.label+': провайдер отключён в Supabase.');
       if(e.status===401)throw new Error('Сессия истекла. Войдите заново и повторите подключение.');
       if(e.status){const code=typeof e.code==='string'&&/^[a-z_]{1,60}$/i.test(e.code)?', '+e.code:'';throw new Error('Не удалось запустить авторизацию '+n.label+' (HTTP '+e.status+code+'). Повторите позже.');}
