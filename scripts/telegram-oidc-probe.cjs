@@ -54,6 +54,9 @@ async function main(){
  const report={notice:'Anonymous HTTP diagnosis only. HTTP 200 or HTML is NOT proof of successful Telegram login. No token exchange, consent submission, or Supabase callback is performed.',results:reports};
  fs.mkdirSync('.cache',{recursive:true});fs.writeFileSync('.cache/telegram-oidc-report.json',JSON.stringify(report,null,2)+'\n');
  console.log(JSON.stringify(report,null,2));
+ // Surface the same sanitized observations through GitHub's Check annotations API.
+ // This avoids needing access to the separate Actions log-storage host.
+ if(process.env.GITHUB_ACTIONS==='true')for(const r of reports)console.log('::notice title=Telegram HTTP observation::'+JSON.stringify(r).replace(/%/g,'%25').replace(/\r/g,'%0D').replace(/\n/g,'%0A'));
  if(reports.some(r=>r.transport_error))process.exitCode=1;
 }
 module.exports={probeRequests,summarize};
