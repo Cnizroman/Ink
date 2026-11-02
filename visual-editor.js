@@ -1,20 +1,20 @@
 /* Visual surface <-> safe Ink text. No raw user HTML is stored or pasted. */
 (function(root){'use strict';
 const hex=v=>{if(/^#[0-9a-f]{6}$/i.test(v))return v.toLowerCase();const m=String(v).match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);return m?'#'+m.slice(1).map(n=>(+n).toString(16).padStart(2,'0')).join(''):null;};
-const blocks=['dialog','note','scene','letter','document','system','memory','dream','epigraph','poem','chat','warning'];
+const blocks=Object.keys(root.InkText?.blockTypes||{}).filter(k=>!['spoiler','choice'].includes(k));
 function serialize(node){
  const walk=n=>{
   if(n.nodeType===3)return n.textContent.replace(/\u00a0/g,' ');if(n.nodeType!==1)return '';
   const tag=n.tagName;if(['SCRIPT','STYLE','IFRAME','OBJECT','IMG','SVG','VIDEO','AUDIO'].includes(tag))return '';
   const kids=()=>[...n.childNodes].map(walk).join(''),body=()=>kids().trim();
-  if(tag==='BR')return '\n';if(tag==='HR')return '\n\n---\n\n';
+  if(tag==='BR')return '\n';if(n.classList.contains('text-pagebreak'))return '\n\n===page===\n\n';if(tag==='HR'){const kind=n.dataset.divider;return '\n\n---'+(root.InkText.dividerIds.includes(kind)?'{'+kind+'}':'')+'\n\n';}
   if(['SPAN','FONT','MARK'].includes(tag)){let out=kids(),fg=hex(n.getAttribute('color')||n.style.color||''),bg=hex(n.style.backgroundColor||'');if(fg)out=`{color:${fg}}${out}{/color}`;if(bg)out=`{mark:${bg}}${out}{/mark}`;if(fg||bg)return out;}
   const wrap={STRONG:'**',B:'**',EM:'*',I:'*',U:'__',S:'~~',STRIKE:'~~',DEL:'~~',MARK:'=='}[tag];if(wrap){const content=kids();if(!content)return '';let out=wrap+content+wrap,fg=hex(n.style.color||''),bg=hex(n.style.backgroundColor||'');if(fg)out=`{color:${fg}}${out}{/color}`;if(bg)out=`{mark:${bg}}${out}{/mark}`;return out;}
   if(/^H[234]$/.test(tag))return '\n\n'+'#'.repeat(Number(tag[1])-1)+' '+body()+'\n\n';
   if(tag==='UL'||tag==='OL')return '\n\n'+[...n.children].filter(el=>el.tagName==='LI').map((el,i)=>(tag==='UL'?'- ':`${i+1}. `)+[...el.childNodes].map(walk).join('').trim()).join('\n')+'\n\n';
   if(tag==='BLOCKQUOTE')return '\n\n'+body().split('\n').map(l=>'> '+l).join('\n')+'\n\n';
   const kind=blocks.find(k=>n.classList.contains('text-'+k));
-  if(kind){const title=n.querySelector(':scope > .text-block-title'),content=[...n.childNodes].filter(el=>el!==title).map(walk).join('').trim();return `\n\n:::${kind}${title?' '+title.textContent.replace(/\n/g,' '):''}\n${content}\n:::\n\n`;}
+  if(kind){const title=n.querySelector(':scope > .text-block-title'),content=[...n.childNodes].filter(el=>el!==title).map(walk).join('').trim();return `\n\n:::${kind}${kind==='page'&&root.InkText.pageLayouts.includes(n.dataset.pageLayout)?'['+n.dataset.pageLayout+']':''}${title?' '+title.textContent.replace(/\n/g,' '):''}\n${content}\n:::\n\n`;}
   if(tag==='DETAILS'){const title=n.querySelector(':scope > summary'),kind=n.classList.contains('text-choice')?'choice':'spoiler',content=[...n.childNodes].filter(el=>el!==title).map(walk).join('').trim();return `\n\n:::${kind} ${title?.textContent.replace(/\n/g,' ')||'Подробнее'}\n${content}\n:::\n\n`;}
   const alignment=['left','center','right'].find(a=>n.classList.contains('text-align-'+a));if(alignment)return `\n\n:::${alignment}\n${body()}\n:::\n\n`;
   if(tag==='SPAN'&&n.classList.contains('line'))return kids()+'\n';
@@ -28,7 +28,7 @@ function mount({host,ta,onChange,poetry=false}){
  const controls=document.createElement('div');controls.className='visual-block-actions';controls.hidden=true;controls.innerHTML='<span class="small"></span><button type="button" class="btn ghost sm" data-block-move="up">↑ Выше</button><button type="button" class="btn ghost sm" data-block-move="down">↓ Ниже</button><button type="button" class="btn danger sm" data-block-move="delete">Удалить блок</button>';el.before(controls);
  let selectedBlock=null;
  const clearSelection=()=>{selectedBlock?.removeAttribute('data-editor-selected');selectedBlock=null;controls.hidden=true;};
- el.addEventListener('click',e=>{clearSelection();const block=e.target.closest('aside,details');if(!block||!el.contains(block))return;selectedBlock=block;block.dataset.editorSelected='true';controls.querySelector('span').textContent=block.querySelector('.text-block-title,summary')?.textContent||'Блок';controls.hidden=false;});
+ el.addEventListener('click',e=>{clearSelection();const block=e.target.closest('aside,details,section.text-page,.text-pagebreak,hr');if(!block||!el.contains(block))return;selectedBlock=block;block.dataset.editorSelected='true';controls.querySelector('span').textContent=block.querySelector('.text-block-title,summary')?.textContent||'Блок';controls.hidden=false;});
  controls.addEventListener('mousedown',e=>e.preventDefault());
  controls.addEventListener('click',e=>{const action=e.target.closest('[data-block-move]')?.dataset.blockMove,b=selectedBlock;if(!action||!b||!el.contains(b))return;if(action==='delete'){if(!confirm('Удалить этот блок? Действие можно отменить.'))return;b.remove();}else{let neighbor=action==='up'?b.previousElementSibling:b.nextElementSibling;while(neighbor&&neighbor.matches('p,div')&&!neighbor.textContent.trim())neighbor=action==='up'?neighbor.previousElementSibling:neighbor.nextElementSibling;if(neighbor){if(action==='up')b.parentNode.insertBefore(b,neighbor);else b.parentNode.insertBefore(b,neighbor.nextSibling);}}sync();render();});
  let range=null,disposed=false;

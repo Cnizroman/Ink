@@ -11,18 +11,18 @@ window.InkWriter={mount({host,work,chapter,chapterId,userId,save,onSaved,notify,
   <form id="chapterForm" class="stack">
     <label class="field">Заголовок главы *<input class="input" name="title" maxlength="160" required value="${esc(original.title)}"></label>
     <div class="writer-modebar" role="group" aria-label="Режим редактора"><button class="btn sm" type="button" id="visualMode" aria-pressed="true">Визуальный редактор</button><button class="btn ghost sm" type="button" id="sourceMode" aria-pressed="false">Разметка</button><span class="small muted">Пишите как в обычном документе</span></div>
-    <details class="panel creative-palette"><summary>Добавить красивый блок · сцены, письма, переписка</summary><p class="small muted">Выберите блок, задайте заголовок и текст. Он будет выглядеть так же у читателей.</p><div class="creative-blocks">${[['scene','Новая сцена'],['letter','Письмо'],['document','Документ'],['chat','Переписка'],['system','Сообщение системы'],['memory','Воспоминание'],['dream','Сон'],['epigraph','Эпиграф'],['poem','Стихотворение'],['warning','Предупреждение'],['choice','Раскрываемый вариант']].map(([type,label])=>`<button type="button" data-creative="${type}"><b>${label}</b><span>Добавить в текст →</span></button>`).join('')}</div></details>
-    <details class="panel author-design"><summary>Оформление для читателей · тема, шрифт и страница</summary><p class="small muted">Это стиль произведения, а не личная тема сайта. Он сохраняется вместе с главой. Читатель сможет выбрать свою тему чтения.</p><div id="storyDesigner"></div></details>
+    <details class="panel creative-palette"><summary>Добавить красивый блок · страницы, сцены и разделители</summary><p class="small muted">26 типов блоков, отдельные страницы и разные разделители внутри одной главы. Оформление сохраняется для читателей.</p><label class="field">Найти блок<input class="input" id="creativeSearch" type="search" placeholder="Письмо, страница, цитата…"></label><div class="creative-blocks">${[...Object.entries(InkText.blockTypes),['divider','Разделитель сцен'],['pagebreak','Разрыв страницы']].map(([type,label])=>`<button type="button" data-creative="${type}"><b>${label}</b><span>Добавить в текст →</span></button>`).join('')}</div></details>
+    <details class="panel author-design"><summary>Оформление для читателей · конструктор страниц и типографики</summary><p class="small muted">Это стиль произведения, а не личная тема сайта. Он сохраняется вместе с главой. Читатель сможет выбрать свою тему чтения.</p><div id="storyDesigner"></div></details>
     <div class="editor-tools" role="toolbar" aria-label="Форматирование текста">
     ${[['bold','Жирный · Ctrl+B'],['italic','Курсив · Ctrl+I'],['underline','Подчёркивание · Ctrl+U'],['strike','Зачёркивание'],['mark','Выделение цветом'],['heading','Заголовок'],['quote','Цитата'],['list','Список'],['numbered','Нумерация'],['dialog','Диалоговое окно'],['note','Примечание'],['spoiler','Спойлер'],['align','Выравнивание'],['divider','Разделитель сцен'],['undo','↶ Отменить'],['redo','↷ Повторить']].map(([id,title])=>`<button type="button" data-format="${id}" title="${title}">${title.split(' · ')[0]}</button>`).join('')}</div>
-    <div class="workshop-options panel"><label class="field">Шрифт<select id="writerFont"><option value="serif">Книжный</option><option value="sans">Без засечек</option><option value="mono">Моноширинный</option></select></label><label class="field">Размер<input id="writerSize" type="number" min="14" max="32" value="${Number(settings.size)||20}"></label><label class="field">Интервал<select id="writerLeading"><option>1.4</option><option>1.8</option><option>2.2</option></select></label><label class="field">Цель, слов<input id="writerGoal" type="number" min="1" max="100000" value="${Number(settings.goal)||1000}"></label><button class="btn ghost sm" id="togglePreview" type="button">Предпросмотр</button><button class="btn ghost sm" id="toggleFocus" type="button">Режим фокуса</button></div>
+    <div class="workshop-options panel"><label class="field">Шрифт<select id="writerFont">${InkStory.fontOptions()}</select></label><label class="field">Размер<input id="writerSize" type="number" min="14" max="32" value="${Number(settings.size)||20}"></label><label class="field">Интервал<select id="writerLeading"><option>1.4</option><option>1.8</option><option>2.2</option></select></label><label class="field">Цель, слов<input id="writerGoal" type="number" min="1" max="100000" value="${Number(settings.goal)||1000}"></label><button class="btn ghost sm" id="togglePreview" type="button">Предпросмотр</button><button class="btn ghost sm" id="toggleFocus" type="button">Режим фокуса</button></div>
     <div class="writer-panels"><label class="field">Текст<textarea class="input editor" id="bodyEd" name="body" maxlength="400000" spellcheck="true" placeholder="Начните историю…">${esc(original.body)}</textarea></label><section class="writer-preview" aria-label="Предпросмотр главы"><div class="kicker">Так увидит читатель</div><div id="chapterPreview" class="reader-text"></div></section></div>
     <div class="writer-status" role="status"><span id="wordCount"></span><span id="draftStatus">Изменений нет</span></div><progress id="writingGoal" max="100" value="0" aria-label="Прогресс к цели"></progress>
     <details class="panel"><summary>Заметки автора · видны только в этом браузере</summary><textarea class="input" id="writerNotes" rows="4" maxlength="10000" placeholder="План сцены, персонажи, что проверить перед публикацией…"></textarea></details>
     <div class="action-row"><button class="btn" type="submit" name="st" value="published">${requiresReview?'Отправить на проверку':chapter?.status==='published'?'Сохранить публикацию':'Опубликовать главу'}</button><button class="btn ghost" type="submit" name="st" value="draft">Сохранить черновик</button><button class="btn dark" type="button" id="exportDraft">Скачать текст .txt</button></div>
     <p class="small muted">Выделите текст и выберите оформление. HTML не исполняется. Предпросмотр использует ту же разметку, что и читалка. Автосохранение — локальное; кнопки выше сохраняют главу в аккаунте.</p>
   </form>
-  <dialog id="writerDialog" class="writer-dialog" aria-labelledby="writerDialogTitle"><form method="dialog" class="stack"><h2 id="writerDialogTitle">Вставить блок</h2><label class="field">Заголовок / имя говорящего<input class="input" id="blockTitle" maxlength="100"></label><label class="field">Содержимое<textarea class="input" id="blockBody" rows="6"></textarea></label><label class="field" id="alignmentField" hidden>Выравнивание<select id="blockAlignment"><option value="left">Слева</option><option value="center">По центру</option><option value="right">Справа</option></select></label><div class="action-row"><button class="btn" value="insert">Вставить</button><button class="btn ghost" value="cancel" formnovalidate>Отмена</button></div></form></dialog></div>`;
+  <dialog id="writerDialog" class="writer-dialog" aria-labelledby="writerDialogTitle"><form method="dialog" class="stack"><h2 id="writerDialogTitle">Вставить блок</h2><label class="field">Заголовок / имя говорящего<input class="input" id="blockTitle" maxlength="100"></label><label class="field">Содержимое<textarea class="input" id="blockBody" rows="6"></textarea></label><label class="field" id="pageLayoutField" hidden>Вид отдельной страницы<select id="blockPageLayout"><option value="inherit">Как у произведения</option>${InkStory.layouts.map(([id,label])=>`<option value="${id}">${label}</option>`).join('')}</select></label><label class="field" id="dividerField" hidden>Разделитель<select id="blockDivider">${InkStory.dividers.map(([id,label])=>`<option value="${id}">${label}</option>`).join('')}</select><small>Свои символы задаются в конструкторе оформления.</small></label><label class="field" id="alignmentField" hidden>Выравнивание<select id="blockAlignment"><option value="left">Слева</option><option value="center">По центру</option><option value="right">Справа</option></select></label><div class="action-row"><button class="btn" value="insert">Вставить</button><button class="btn ghost" value="cancel" formnovalidate>Отмена</button></div></form></dialog></div>`;
   const $=s=>host.querySelector(s),ta=$('#bodyEd'),title=$('[name=title]'),notes=$('#writerNotes'),dialog=$('#writerDialog');
   notes.value=localStorage.getItem(key+'_notes')||'';
   let tools=null;
@@ -38,7 +38,8 @@ window.InkWriter={mount({host,work,chapter,chapterId,userId,save,onSaved,notify,
     $('#writingGoal').value=Math.min(100,count/Math.max(1,settings.goal)*100);
     $('#chapterPreview').innerHTML=InkText.render(ta.value,work.type==='poetry');InkStory.apply($('#chapterPreview'),designer.read());
     $('.writer-panels').classList.toggle('without-preview',!settings.preview);
-    const fonts={serif:'var(--body)',sans:'var(--ui)',mono:'monospace'};
+    const fonts=InkStory.fonts;
+    if(visual)InkStory.apply(visual.el,designer.read());
     [ta,...(visual?[visual.el]:[])].forEach(el=>{el.style.fontFamily=fonts[settings.font]||fonts.serif;el.style.fontSize=Math.min(32,Math.max(14,Number(settings.size)||20))+'px';el.style.lineHeight=String(settings.leading);});
     $('#togglePreview').setAttribute('aria-pressed',String(settings.preview));tools?.update();
   };
@@ -48,18 +49,22 @@ window.InkWriter={mount({host,work,chapter,chapterId,userId,save,onSaved,notify,
   const setMode=mode=>{if(!mode&&visualMode)visual.sync();visualMode=mode;visual.clearSelection();ta.parentElement.hidden=mode;visual.el.hidden=!mode;$('#visualMode').setAttribute('aria-pressed',String(mode));$('#sourceMode').setAttribute('aria-pressed',String(!mode));if(mode)visual.render();};
   $('#visualMode').addEventListener('click',()=>setMode(true));$('#sourceMode').addEventListener('click',()=>setMode(false));setMode(true);
   ta.addEventListener('input',()=>changed());title.addEventListener('input',()=>changed());notes.addEventListener('input',()=>changed());
-  host.querySelectorAll('[data-creative]').forEach(b=>b.addEventListener('click',()=>{pendingBlock=b.dataset.creative;selection=[ta.selectionStart,ta.selectionEnd];$('#writerDialogTitle').textContent=b.querySelector('b').textContent;$('#blockTitle').parentElement.hidden=false;$('#blockTitle').value='';$('#blockBody').value=visualMode?(getSelection()?.toString()||''):ta.value.slice(...selection);$('#alignmentField').hidden=true;dialog.returnValue='cancel';dialog.showModal();}));
+  const openBlock=type=>{
+    pendingBlock=type;selection=[ta.selectionStart,ta.selectionEnd];
+    if(type==='pagebreak'){replace('\n\n===page===\n\n');return;}
+    $('#writerDialogTitle').textContent=InkText.blockTypes[type]||{divider:'Разделитель сцен',align:'Выравнивание блока'}[type];
+    $('#blockTitle').parentElement.hidden=['align','divider'].includes(type);$('#blockBody').parentElement.hidden=type==='divider';$('#blockTitle').value='';$('#blockBody').value=visualMode?(getSelection()?.toString()||''):ta.value.slice(...selection);
+    $('#alignmentField').hidden=type!=='align';$('#pageLayoutField').hidden=type!=='page';$('#dividerField').hidden=type!=='divider';$('#blockPageLayout').value='inherit';$('#blockDivider').value=designer.read().divider;dialog.returnValue='cancel';dialog.showModal();
+  };
+  host.querySelectorAll('[data-creative]').forEach(b=>b.addEventListener('click',()=>openBlock(b.dataset.creative)));
+  $('#creativeSearch').addEventListener('input',e=>{const q=e.target.value.trim().toLocaleLowerCase('ru');host.querySelectorAll('[data-creative]').forEach(b=>b.hidden=!b.textContent.toLocaleLowerCase('ru').includes(q));});
   const format=kind=>{
     if(kind==='undo'||kind==='redo'){pos=Math.max(0,Math.min(history.length-1,pos+(kind==='undo'?-1:1)));const s=history[pos];ta.value=s.body;ta.setSelectionRange(s.start,s.end);dirty=true;clean=false;visual?.render();redraw();persist();if(visualMode)visual.restore();else ta.focus();return;}
     if(visualMode&&visual.command(kind))return;
     selection=[ta.selectionStart,ta.selectionEnd];const text=(visualMode?getSelection()?.toString():ta.value.slice(...selection))||'текст';
-    if(['dialog','note','spoiler','align'].includes(kind)){
-      pendingBlock=kind;$('#writerDialogTitle').textContent={dialog:'Диалоговое окно',note:'Примечание',spoiler:'Скрываемый спойлер',align:'Выравнивание блока'}[kind];
-      $('#blockTitle').value='';$('#blockBody').value=visualMode?(getSelection()?.toString()||''):ta.value.slice(...selection);$('#alignmentField').hidden=kind!=='align';$('#blockTitle').parentElement.hidden=kind==='align';dialog.returnValue='cancel';dialog.showModal();return;
-    }
+    if(['dialog','note','spoiler','align','divider'].includes(kind)){openBlock(kind);return;}
     const wraps={bold:'**',italic:'*',underline:'__',strike:'~~',mark:'=='};
     if(wraps[kind])replace(wraps[kind]+text+wraps[kind]);
-    else if(kind==='divider')replace('\n\n---\n\n');
     else if(kind==='heading')replace('\n\n## '+text+'\n\n');
     else if(kind==='quote')replace('\n\n'+text.split('\n').map(l=>'> '+l).join('\n')+'\n\n');
     else replace('\n\n'+text.split('\n').map((l,i)=>(kind==='numbered'?`${i+1}. `:'- ')+l).join('\n')+'\n\n');
@@ -67,7 +72,8 @@ window.InkWriter={mount({host,work,chapter,chapterId,userId,save,onSaved,notify,
   host.querySelector('.editor-tools').addEventListener('mousedown',e=>{if(e.target.closest('button'))e.preventDefault();});
   host.querySelectorAll('[data-format]').forEach(b=>b.addEventListener('click',()=>format(b.dataset.format)));
   dialog.addEventListener('close',()=>{if(!disposed&&dialog.returnValue==='insert'){
-    const type=pendingBlock==='align'?$('#blockAlignment').value:pendingBlock;
+    if(pendingBlock==='divider'){replace('\n\n---{'+$('#blockDivider').value+'}\n\n');return;}
+    const type=pendingBlock==='align'?$('#blockAlignment').value:pendingBlock==='page'&&$('#blockPageLayout').value!=='inherit'?'page['+$('#blockPageLayout').value+']':pendingBlock;
     const caption=$('#blockTitle').value.replace(/\n/g,' '),body=$('#blockBody').value.replace(/^:::/gm,'：：：');
     replace(`\n\n:::${type}${pendingBlock!=='align'&&caption?' '+caption:''}\n${body}\n:::\n\n`);
   }});

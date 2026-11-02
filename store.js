@@ -132,7 +132,7 @@ function adoptFounderIdentity(state, real){
 
 const Store={
   mode:'local', // 'supabase' | 'local'
-  state:null, session:null,moderationReady:false,studioReady:false,sessionEpoch:0,unlockedStories:new Map(),
+  state:null, session:null,moderationReady:false,studioReady:false,studioVersion:0,sessionEpoch:0,unlockedStories:new Map(),
   uid, today,
   cleanCustomization(c){return cleanCustomization(c,this.mode==='local');},
 
@@ -145,7 +145,7 @@ const Store={
     if(ok){
       this.mode='supabase';
       try{this.moderationReady=(await sbFetch('/rest/v1/rpc/moderation_version',{method:'POST',body:'{}'}))===1;}catch(_){this.moderationReady=false;}
-      try{this.studioReady=(await sbFetch('/rest/v1/rpc/story_studio_version',{method:'POST',body:'{}'}))===1;}catch(_){this.studioReady=false;}
+      try{this.studioVersion=await sbFetch('/rest/v1/rpc/story_studio_version',{method:'POST',body:'{}'});this.studioReady=Number.isInteger(this.studioVersion)&&this.studioVersion>=1;}catch(_){this.studioReady=false;this.studioVersion=0;}
       if(this.session&&!this.session.token)this.setSession(null);
       await this.completeSocialReturn();
       try{ await this.pullFromSupabase(); }catch(e){ console.warn('Supabase pull failed, using cache',e); }
@@ -430,7 +430,7 @@ const Store={
     w={...w,moderationStatus:user.role==='admin'?'approved':'draft',moderationNote:'',moderationRevision:(ex?.moderationRevision||0)+1,legacyUrl:safeLegacyUrl(w.id,w.legacyUrl),featured:user.role==='admin'?!!w.featured:!!ex?.featured,updatedAt:today()};
     const row={id:/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(w.id)?w.id:undefined,author_id:w.authorId,title:w.title,subtitle:w.subtitle,type:w.type,genre:w.genre,tags:w.tags,description:w.description,status:w.status,age_rating:w.ageRating,legacy_url:w.legacyUrl,featured:w.featured,cover:w.cover};
     if(this.mode==='supabase'){
-      if(this.studioReady&&!w.legacyUrl)row.reader_style=window.InkStory.clean(w.readerStyle||ex?.readerStyle);
+      if(this.studioReady&&!w.legacyUrl)row.reader_style=this.studioVersion>=2?window.InkStory.clean(w.readerStyle||ex?.readerStyle):window.InkStory.legacy(w.readerStyle||ex?.readerStyle);
       else if(w.readerStyle&&JSON.stringify(w.readerStyle)!==JSON.stringify(ex?.readerStyle)&&JSON.stringify(w.readerStyle)!=='{}')throw new Error('Для сохранения авторского стиля примените SQL настройки мастерской.');
       let saved;
       if(w.legacyUrl) await sbFetch('/rest/v1/founder_work_settings?on_conflict=work_id',{method:'POST',headers:sbHeaders({'Prefer':'resolution=merge-duplicates,return=representation'}),body:JSON.stringify({work_id:w.id,author_id:user.id,settings:row})});

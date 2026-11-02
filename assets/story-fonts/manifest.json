@@ -1,0 +1,598 @@
+[
+  {
+    "id": "literata",
+    "family": "Literata",
+    "package": "@fontsource/literata",
+    "version": "5.3.0",
+    "license": "literata-LICENSE.txt",
+    "files": [
+      {
+        "file": "literata-cyrillic-400-normal.woff2",
+        "sha256": "39bb5c343c21e6a4b29fef83c0b909d2c80fd9084d46c981b742b1dac54663d0"
+      },
+      {
+        "file": "literata-latin-400-normal.woff2",
+        "sha256": "a60c193b55766b68b922e2327e15c2d8c145532f283a27c3411b9c47a8583d18"
+      },
+      {
+        "file": "literata-cyrillic-700-normal.woff2",
+        "sha256": "d3414d99a6c9bbcf9b4a2ae8a177e0f656ac162f0c8755155373268415989505"
+      },
+      {
+        "file": "literata-latin-700-normal.woff2",
+        "sha256": "1f2985e0fc368aac76f95b847cd05ef6ec4bac2733a648098c62edf990756cf5"
+      },
+      {
+        "file": "literata-cyrillic-400-italic.woff2",
+        "sha256": "8bb34e53cef46b327609dd3d9ac6b1f0fda14855a241fe36baabb763f2e1ca51"
+      },
+      {
+        "file": "literata-latin-400-italic.woff2",
+        "sha256": "1e98bfbbb4eb8177b9c21b3fd526e1118c4835d21ff870c0d1c25b1ef4409fba"
+      }
+    ]
+  },
+  {
+    "id": "lora",
+    "family": "Lora",
+    "package": "@fontsource/lora",
+    "version": "5.3.0",
+    "license": "lora-LICENSE.txt",
+    "files": [
+      {
+        "file": "lora-cyrillic-400-normal.woff2",
+        "sha256": "d1f41090bba5100d2857cf974e2ae542d4be61556febbb2b5afd072c2e42fdea"
+      },
+      {
+        "file": "lora-latin-400-normal.woff2",
+        "sha256": "ac079950fd9885261c0f73d9e87233f31b5427333ce0eb20e26c119458493c40"
+      },
+      {
+        "file": "lora-cyrillic-700-normal.woff2",
+        "sha256": "f0550b4dae0b9c17427d61f42edd6b5f44b1b7b0aca53788505fe1dce5c3a022"
+      },
+      {
+        "file": "lora-latin-700-normal.woff2",
+        "sha256": "c05fd5289492ed310ed882259b944ca5287e76e572a65d92d3941f9f44f0342a"
+      },
+      {
+        "file": "lora-cyrillic-400-italic.woff2",
+        "sha256": "aaeb039ba0ecdbc75108a6f66ee9f6745315412de78a4061cc90365b513fc4a3"
+      },
+      {
+        "file": "lora-latin-400-italic.woff2",
+        "sha256": "723cc14fe86bc9fadb2f5f34efb421d246edb240a18d2a7828d2edc041d79996"
+      }
+    ]
+  },
+  {
+    "id": "pt-serif",
+    "family": "PT Serif",
+    "package": "@fontsource/pt-serif",
+    "version": "5.3.0",
+    "license": "pt-serif-LICENSE.txt",
+    "files": [
+      {
+        "file": "pt-serif-cyrillic-400-normal.woff2",
+        "sha256": "050aee25e3462f72c4d357ee964b8df1801e701bae8af275b697581a87c04a48"
+      },
+      {
+        "file": "pt-serif-latin-400-normal.woff2",
+        "sha256": "4271064a37f3ffc0aac5f3806db8a72acc23e19447d1804e4e80d8796cbf6330"
+      },
+      {
+        "file": "pt-serif-cyrillic-700-normal.woff2",
+        "sha256": "bec4e724c49bde6d6b3f15038c8015f5dc7c810bdaadd3aee537ab72afc50e4a"
+      },
+      {
+        "file": "pt-serif-latin-700-normal.woff2",
+        "sha256": "bf23a7a4eebedbb87d4084a69496b29815914a18e339a00f5dc73a03c9c9328f"
+      },
+      {
+        "file": "pt-serif-cyrillic-400-italic.woff2",
+        "sha256": "9d1c80c9a947548f5da15b917f693b2b1df148e807c212cce877793d326149c4"
+      },
+      {
+        "file": "pt-serif-latin-400-italic.woff2",
+        "sha256": "cb373bde18855c82a0ebf2946ea661ebd0be58a7fbabdf20f7744ecd9c0a9cfd"
+      }
+    ]
+  },
+  {
+    "id": "merriweather",
+    "family": "Merriweather",
+    "package": "@fontsource/merriweather",
+    "version": "5.3.0",
+    "license": "merriweather-LICENSE.txt",
+    "files": [
+      {
+        "file": "merriweather-cyrillic-400-normal.woff2",
+        "sha256": "4c5c4aa05a2596e8ebb1b4dc0d62028c5780da6cf7c2c828985555b0bbf0c615"
+      },
+      {
+        "file": "merriweather-latin-400-normal.woff2",
+        "sha256": "66f5bd22d738a801a9e58d71920559743b0baaced04be299e3c4feca3dce3556"
+      },
+      {
+        "file": "merriweather-cyrillic-700-normal.woff2",
+        "sha256": "d01fe36bedbfdde43c9b8f9bde6d3fa4f872310bc1d220227d00a2e9219277e7"
+      },
+      {
+        "file": "merriweather-latin-700-normal.woff2",
+        "sha256": "4e1ab49396c02be0d9a2a25eed7bc73781c047d85fcb5dfc2889873eaf992b09"
+      },
+      {
+        "file": "merriweather-cyrillic-400-italic.woff2",
+        "sha256": "eebc9ffab88fde9ed42d37d671758db5eb7a79d13bc151ea82d8f94cc21723e2"
+      },
+      {
+        "file": "merriweather-latin-400-italic.woff2",
+        "sha256": "051559ee0644cd647c8f654cffea1d1a5ce601e573af21d0984528563fb476f6"
+      }
+    ]
+  },
+  {
+    "id": "noto-serif",
+    "family": "Noto Serif",
+    "package": "@fontsource/noto-serif",
+    "version": "5.3.0",
+    "license": "noto-serif-LICENSE.txt",
+    "files": [
+      {
+        "file": "noto-serif-cyrillic-400-normal.woff2",
+        "sha256": "8deaf453448fb06f5cdd79262bc0a22a8af999541ef2639202f6dc44d0cae392"
+      },
+      {
+        "file": "noto-serif-latin-400-normal.woff2",
+        "sha256": "4c0cbe3eec50d260754d681c17ee2af49a43d7fd93ce42877f665fcb1a889b87"
+      },
+      {
+        "file": "noto-serif-cyrillic-700-normal.woff2",
+        "sha256": "1dd6e758015cc8e424c0d57eabb94addf4adcba14c67ecdfd3b6386fc88295d0"
+      },
+      {
+        "file": "noto-serif-latin-700-normal.woff2",
+        "sha256": "0d0b440760c93e6fec440ad438d10cea6c70367a0f5ecfcfa15cef0a85c67093"
+      },
+      {
+        "file": "noto-serif-cyrillic-400-italic.woff2",
+        "sha256": "cc967469ff60e3386f8fc664b1df34ada138cfaac8ad4ae549b4849df687f27e"
+      },
+      {
+        "file": "noto-serif-latin-400-italic.woff2",
+        "sha256": "a7386f772de25b62a3a449fa5d9f3e09916b65cf6a6dfc52f5a103c276fee157"
+      }
+    ]
+  },
+  {
+    "id": "cormorant-garamond",
+    "family": "Cormorant Garamond",
+    "package": "@fontsource/cormorant-garamond",
+    "version": "5.3.0",
+    "license": "cormorant-garamond-LICENSE.txt",
+    "files": [
+      {
+        "file": "cormorant-garamond-cyrillic-400-normal.woff2",
+        "sha256": "0d23162e67528fdc5fe1b12bedc525a69bbdc86d5d9f3c2ee9e9ee459934ecd4"
+      },
+      {
+        "file": "cormorant-garamond-latin-400-normal.woff2",
+        "sha256": "8048ac209bec741e1c29cd0cfac5aac1c0c2ba8c3ddbd4a58fa9bd92ef5c63c2"
+      },
+      {
+        "file": "cormorant-garamond-cyrillic-700-normal.woff2",
+        "sha256": "a767c1a110fa77514eda50ac2f962e92f99db4b8760c2bea2a6c04cbdf9b02aa"
+      },
+      {
+        "file": "cormorant-garamond-latin-700-normal.woff2",
+        "sha256": "21a0fc1c5c22708cf4aa0c147fd32982e25bf9e21efec0ca31a4495ba41753eb"
+      },
+      {
+        "file": "cormorant-garamond-cyrillic-400-italic.woff2",
+        "sha256": "109ce34012f204b9794f2fa2e8e6fdff52b156636cd5da86d86ae7142b48aa03"
+      },
+      {
+        "file": "cormorant-garamond-latin-400-italic.woff2",
+        "sha256": "e48e58027030df56869b795ca6f19b7012158275f7ad7cde1900b4a0b68d02e2"
+      }
+    ]
+  },
+  {
+    "id": "eb-garamond",
+    "family": "EB Garamond",
+    "package": "@fontsource/eb-garamond",
+    "version": "5.3.0",
+    "license": "eb-garamond-LICENSE.txt",
+    "files": [
+      {
+        "file": "eb-garamond-cyrillic-400-normal.woff2",
+        "sha256": "c88d58568eacd2b470514cec72a43f79f154cc79144acff7f7b4f17a5463fb1d"
+      },
+      {
+        "file": "eb-garamond-latin-400-normal.woff2",
+        "sha256": "912929dba0faab5e151849ea5e988adba3080ad6d2bcc4dbff27aa427896498d"
+      },
+      {
+        "file": "eb-garamond-cyrillic-700-normal.woff2",
+        "sha256": "4d3ddd3f25998201370e2ab098e8b0dade8c2879a3d5c505516dccf1898eeeb9"
+      },
+      {
+        "file": "eb-garamond-latin-700-normal.woff2",
+        "sha256": "ae7cef029eea959654a474fbcaa2c202f205abfca29caaef62e9a0019c3c8370"
+      },
+      {
+        "file": "eb-garamond-cyrillic-400-italic.woff2",
+        "sha256": "2471084322da28cd71b77972fe5261495bd923b41edbfe1c1b7220959e274185"
+      },
+      {
+        "file": "eb-garamond-latin-400-italic.woff2",
+        "sha256": "fc5851c4466e73bec048bb62d65f8abadf70d602816687e6d364214e35fa8abb"
+      }
+    ]
+  },
+  {
+    "id": "playfair-display",
+    "family": "Playfair Display",
+    "package": "@fontsource/playfair-display",
+    "version": "5.3.0",
+    "license": "playfair-display-LICENSE.txt",
+    "files": [
+      {
+        "file": "playfair-display-cyrillic-400-normal.woff2",
+        "sha256": "e740be684698fe83afd47e28ba5070f6e8d9759d37717679a74abd461eda01f6"
+      },
+      {
+        "file": "playfair-display-latin-400-normal.woff2",
+        "sha256": "1fe9ad5d8b2ebd8ecb8fbd05bed1e3fdfa52dae3f1a04e1c219918442fe9394d"
+      },
+      {
+        "file": "playfair-display-cyrillic-700-normal.woff2",
+        "sha256": "cfbfb0e36791f82470367d25c5a8d498dc1561a7a66a4172b7c6df749fdf9894"
+      },
+      {
+        "file": "playfair-display-latin-700-normal.woff2",
+        "sha256": "28453852ea165c47b5a941be00e418402e1407002ed87507f062a1e316328fe6"
+      },
+      {
+        "file": "playfair-display-cyrillic-400-italic.woff2",
+        "sha256": "2b016e18145f89b6b998a13152ff85a5815e94751210d85d9808549f712c62e1"
+      },
+      {
+        "file": "playfair-display-latin-400-italic.woff2",
+        "sha256": "eabce94d4a69e439cd050755c31f9894ac8a78f93e58b063c6c01f370474e1de"
+      }
+    ]
+  },
+  {
+    "id": "pt-sans",
+    "family": "PT Sans",
+    "package": "@fontsource/pt-sans",
+    "version": "5.3.0",
+    "license": "pt-sans-LICENSE.txt",
+    "files": [
+      {
+        "file": "pt-sans-cyrillic-400-normal.woff2",
+        "sha256": "f283e584f001db04b39f339e859454a205c431c576c6a33af9259e54415db1bd"
+      },
+      {
+        "file": "pt-sans-latin-400-normal.woff2",
+        "sha256": "2dea6190c113af617923c6b71f7f10ffbdf72074556f79963610254fe40e49be"
+      },
+      {
+        "file": "pt-sans-cyrillic-700-normal.woff2",
+        "sha256": "05795f7954ba178292fce413dc9ac82838415d4d6f7e6afbce2eeefa34f461d1"
+      },
+      {
+        "file": "pt-sans-latin-700-normal.woff2",
+        "sha256": "05ea99a48ece3c624fd9df15f5cf4e1d94703bde9ed2b384495900f55e28befe"
+      },
+      {
+        "file": "pt-sans-cyrillic-400-italic.woff2",
+        "sha256": "c3909442456a8f357aa2adf5caa11641ff935701be8bedc35188003aaa9cb6c9"
+      },
+      {
+        "file": "pt-sans-latin-400-italic.woff2",
+        "sha256": "1f275d522571c81eb7d02d47015bf4eb1c60ab7520477bd40ba39425c1df49f2"
+      }
+    ]
+  },
+  {
+    "id": "open-sans",
+    "family": "Open Sans",
+    "package": "@fontsource/open-sans",
+    "version": "5.3.0",
+    "license": "open-sans-LICENSE.txt",
+    "files": [
+      {
+        "file": "open-sans-cyrillic-400-normal.woff2",
+        "sha256": "dbb0be746ac930892a1f0303d33f4cca4520120d2699ecadf34efeb6dd52a7f4"
+      },
+      {
+        "file": "open-sans-latin-400-normal.woff2",
+        "sha256": "0e44026ad31376af1b56593cd4acb4f353f8e8789c51759e18f64578e4ef296a"
+      },
+      {
+        "file": "open-sans-cyrillic-700-normal.woff2",
+        "sha256": "71ea3254f0d75c7caedb5640931ea026994f396d81561fe454ec1dc4ed9f104c"
+      },
+      {
+        "file": "open-sans-latin-700-normal.woff2",
+        "sha256": "594a622208d1dad5d1dd58aef74f212ce7132d8f0aa5bacea6cfeb86d308c17a"
+      },
+      {
+        "file": "open-sans-cyrillic-400-italic.woff2",
+        "sha256": "d7ab06ae7d40d3a1a3ef2d7e25290b910894603583b23703d453d2b398c72d39"
+      },
+      {
+        "file": "open-sans-latin-400-italic.woff2",
+        "sha256": "3b50909a098195a8a3fda73fe29c260724e6f9ca624dd750cb8af7cb0c9198e2"
+      }
+    ]
+  },
+  {
+    "id": "roboto",
+    "family": "Roboto",
+    "package": "@fontsource/roboto",
+    "version": "5.3.0",
+    "license": "roboto-LICENSE.txt",
+    "files": [
+      {
+        "file": "roboto-cyrillic-400-normal.woff2",
+        "sha256": "fe349e5377e88095a1b04b615bf5e745f1899556545383c348a007aab628815e"
+      },
+      {
+        "file": "roboto-latin-400-normal.woff2",
+        "sha256": "425c0713a8176f92273d378599c7eac57de7fafabd4bd0ed457b70eb8f80d371"
+      },
+      {
+        "file": "roboto-cyrillic-700-normal.woff2",
+        "sha256": "450e0c66acb4c5377a4f30dd5dec8370152f5f9521c0bc452589b3586bd978eb"
+      },
+      {
+        "file": "roboto-latin-700-normal.woff2",
+        "sha256": "b9d66d1708156f765ada51939bc24ed259dafa69eb631b36e443680fe9e15879"
+      },
+      {
+        "file": "roboto-cyrillic-400-italic.woff2",
+        "sha256": "5d6d34398b5c396d5a57a899125fb9f5c6dae1c04c2b12cfbc248830114c2142"
+      },
+      {
+        "file": "roboto-latin-400-italic.woff2",
+        "sha256": "5d0e978b6560631da2504e1612e91ee1ff959c04adae245eb320ac90cad2ba2f"
+      }
+    ]
+  },
+  {
+    "id": "noto-sans",
+    "family": "Noto Sans",
+    "package": "@fontsource/noto-sans",
+    "version": "5.3.0",
+    "license": "noto-sans-LICENSE.txt",
+    "files": [
+      {
+        "file": "noto-sans-cyrillic-400-normal.woff2",
+        "sha256": "05af9e705d3b63aedba67197d19fb448b97353e1386930716c7e835b08f126ba"
+      },
+      {
+        "file": "noto-sans-latin-400-normal.woff2",
+        "sha256": "09aee8065d25508f23a4c3d92cd777ac869c52d93fd868a88f025d888a7937d6"
+      },
+      {
+        "file": "noto-sans-cyrillic-700-normal.woff2",
+        "sha256": "0980b97224d9130cf3f651c8ad15b9e0b1eb361d31c71259363ec2bbd5f70750"
+      },
+      {
+        "file": "noto-sans-latin-700-normal.woff2",
+        "sha256": "e77bfe1db912f687b0319b60de158cfada67f89c8ee4f8e2bd6020f970accbfb"
+      },
+      {
+        "file": "noto-sans-cyrillic-400-italic.woff2",
+        "sha256": "8d37eb626fdbb4188026558df33ea1d5c62c96e630f2ef367e9c370adf48a8e7"
+      },
+      {
+        "file": "noto-sans-latin-400-italic.woff2",
+        "sha256": "c302cbfdd98d628d60b6ef8de3c8459c70449df3a5ff2baacfa7481d95e79f4c"
+      }
+    ]
+  },
+  {
+    "id": "rubik",
+    "family": "Rubik",
+    "package": "@fontsource/rubik",
+    "version": "5.3.0",
+    "license": "rubik-LICENSE.txt",
+    "files": [
+      {
+        "file": "rubik-cyrillic-400-normal.woff2",
+        "sha256": "4f4b1a2159b1f9fb224e1718f14a4c8777eb34b46e9f54c5f1a03e462338bb6e"
+      },
+      {
+        "file": "rubik-latin-400-normal.woff2",
+        "sha256": "82ac0e78285c43d0cd203427c57ab30fb07b18f8e6166045f729442eb1abfa26"
+      },
+      {
+        "file": "rubik-cyrillic-700-normal.woff2",
+        "sha256": "e82a4d4fd1f282f0790679eb52212c7a1102b77d871c5e47d42220ad5565b691"
+      },
+      {
+        "file": "rubik-latin-700-normal.woff2",
+        "sha256": "e423f8ae1668156addf5e32f1056d5b22b5b113a9a23afd364df84a6fa88602d"
+      },
+      {
+        "file": "rubik-cyrillic-400-italic.woff2",
+        "sha256": "0eb84234be59f4bf18fdb62692f49d65644e2ac4ddd66f06fb1c629fd36e1117"
+      },
+      {
+        "file": "rubik-latin-400-italic.woff2",
+        "sha256": "6f2f041a86279a1329ba7aeedd89a5b86b7d7c373a809590edeb482c0b866ece"
+      }
+    ]
+  },
+  {
+    "id": "oswald",
+    "family": "Oswald",
+    "package": "@fontsource/oswald",
+    "version": "5.3.0",
+    "license": "oswald-LICENSE.txt",
+    "files": [
+      {
+        "file": "oswald-cyrillic-400-normal.woff2",
+        "sha256": "8969c189009d0e762aa38db38976c580610d20132e743403ce0b109c8b39781d"
+      },
+      {
+        "file": "oswald-latin-400-normal.woff2",
+        "sha256": "e902b779e43944c300cf8ae5e4a1affa68cb8a823fd263dd2f479c4cdfbd213c"
+      },
+      {
+        "file": "oswald-cyrillic-700-normal.woff2",
+        "sha256": "92867238f947d9b25b2d22c0ef38916e10824f5482f6ba078190738e392c1246"
+      },
+      {
+        "file": "oswald-latin-700-normal.woff2",
+        "sha256": "aae665c75af89ea7cb7d8ccc8b0911ea72267442ebcd84f6e3efa041ad3b3c16"
+      }
+    ]
+  },
+  {
+    "id": "pt-mono",
+    "family": "PT Mono",
+    "package": "@fontsource/pt-mono",
+    "version": "5.3.0",
+    "license": "pt-mono-LICENSE.txt",
+    "files": [
+      {
+        "file": "pt-mono-cyrillic-400-normal.woff2",
+        "sha256": "798d60261c091fa0735d73a9c10c819d27b27cbbcfdcdf6b8ba94e0d41a7d99f"
+      },
+      {
+        "file": "pt-mono-latin-400-normal.woff2",
+        "sha256": "b4e2aee32a6162b66a40f6fc7ac09962b0385e467ca8b143d92a091b16eaff6d"
+      }
+    ]
+  },
+  {
+    "id": "roboto-slab",
+    "family": "Roboto Slab",
+    "package": "@fontsource/roboto-slab",
+    "version": "5.3.0",
+    "license": "roboto-slab-LICENSE.txt",
+    "files": [
+      {
+        "file": "roboto-slab-cyrillic-400-normal.woff2",
+        "sha256": "6ab750814b5019291fcafa4573d9db1373b970cf2308acfa38883a2e6ee51c76"
+      },
+      {
+        "file": "roboto-slab-latin-400-normal.woff2",
+        "sha256": "484e9925bb3045e88a8eec1103ab125e6dbe486172fb56b06fe6751c8b570839"
+      },
+      {
+        "file": "roboto-slab-cyrillic-700-normal.woff2",
+        "sha256": "7fce3c19d66fa7a4ebb655801e2ba98e5769a7ffccf9656d37ab18b0668cd430"
+      },
+      {
+        "file": "roboto-slab-latin-700-normal.woff2",
+        "sha256": "66fa77aafb51fb5058e1fd7e34977f55e84494600bccb2d4cc9d0cbc998eb5cb"
+      }
+    ]
+  },
+  {
+    "id": "jetbrains-mono",
+    "family": "JetBrains Mono",
+    "package": "@fontsource/jetbrains-mono",
+    "version": "5.3.0",
+    "license": "jetbrains-mono-LICENSE.txt",
+    "files": [
+      {
+        "file": "jetbrains-mono-cyrillic-400-normal.woff2",
+        "sha256": "522f5827308102a9c0ea7860b5a11306043610ecf03d150ba32056a06e8c56e2"
+      },
+      {
+        "file": "jetbrains-mono-latin-400-normal.woff2",
+        "sha256": "14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb"
+      },
+      {
+        "file": "jetbrains-mono-cyrillic-700-normal.woff2",
+        "sha256": "6251ef44d6390a4f0622432eb852864af90dd1b8310d153c3c6d235e0c412570"
+      },
+      {
+        "file": "jetbrains-mono-latin-700-normal.woff2",
+        "sha256": "d0d4e818808f2a0ba39b2b09d1989366f63494e295f003c7ef436697378507e8"
+      },
+      {
+        "file": "jetbrains-mono-cyrillic-400-italic.woff2",
+        "sha256": "f1c1fd2a2efbeafa8b0bd8afc5729f3b2c3ff6f936a08d5d039388a9995bc59b"
+      },
+      {
+        "file": "jetbrains-mono-latin-400-italic.woff2",
+        "sha256": "87ddac4a62229787528cf4ac3fa58137b62a9aec364c44fc0f40470bcda9efba"
+      }
+    ]
+  },
+  {
+    "id": "comfortaa",
+    "family": "Comfortaa",
+    "package": "@fontsource/comfortaa",
+    "version": "5.3.0",
+    "license": "comfortaa-LICENSE.txt",
+    "files": [
+      {
+        "file": "comfortaa-cyrillic-400-normal.woff2",
+        "sha256": "7d09133bbe5687a951c29ab1f4130e89c3041e63e39f9fa2fecbbc1bd4592aab"
+      },
+      {
+        "file": "comfortaa-latin-400-normal.woff2",
+        "sha256": "4e86e54d50483956c59a01b5b671b6807fa7235d94e5716cffc5cf390544b1bc"
+      },
+      {
+        "file": "comfortaa-cyrillic-700-normal.woff2",
+        "sha256": "52a4b41d6e1704b770c77ecdd2b3890b7b3dc9da7fd32e731e8607b6f29b1539"
+      },
+      {
+        "file": "comfortaa-latin-700-normal.woff2",
+        "sha256": "ed9f328cf6aaa4c14dfb464d215e8a0d8d56b675a72fb601b819e95a1cb4e45d"
+      }
+    ]
+  },
+  {
+    "id": "caveat",
+    "family": "Caveat",
+    "package": "@fontsource/caveat",
+    "version": "5.3.0",
+    "license": "caveat-LICENSE.txt",
+    "files": [
+      {
+        "file": "caveat-cyrillic-400-normal.woff2",
+        "sha256": "33a1c801a15c858423970f7039957bde1a1eaf481e6e2872eb327d3b1e68401b"
+      },
+      {
+        "file": "caveat-latin-400-normal.woff2",
+        "sha256": "d0b7b931b8980049327e8f8f9ac264617c8200b8422d62e886473d3d9527bad3"
+      },
+      {
+        "file": "caveat-cyrillic-700-normal.woff2",
+        "sha256": "55a5d86e697f210278f3a6eab12abf30c73d19e097e98738150562be0bfd58ab"
+      },
+      {
+        "file": "caveat-latin-700-normal.woff2",
+        "sha256": "15f9638095ad5ec9816f93d66805ca1a87e71dc5a76b596bfce1c78d4704c405"
+      }
+    ]
+  },
+  {
+    "id": "bad-script",
+    "family": "Bad Script",
+    "package": "@fontsource/bad-script",
+    "version": "5.3.0",
+    "license": "bad-script-LICENSE.txt",
+    "files": [
+      {
+        "file": "bad-script-cyrillic-400-normal.woff2",
+        "sha256": "c839bd44e6793f2ba20603ee9bf1ef34d23c04cd7d452cd53a3171cecf241d24"
+      },
+      {
+        "file": "bad-script-latin-400-normal.woff2",
+        "sha256": "01c47bfe80281d0a2f2554f1226de5e75fca6655751c287bf1590ce350c23971"
+      }
+    ]
+  }
+]

@@ -257,7 +257,7 @@ function pageRead(wid,cid){
     <div class="kicker" style="justify-content:center">${String(idx+1).padStart(2,'0')} / ${String(chs.length).padStart(2,'0')}</div>
     <h1>${esc(c.title)}</h1><div class="r-meta">${esc(w.title)} · ${esc(a.displayName)} · ${fmt(words(c.body))} слов</div>
     <div class="reader-text" style="font-size:${readerSettings.size||InkStory.clean(w.readerStyle).size}px">${renderText(c.body,w.type==='poetry')}</div>
-    <div style="text-align:center;color:var(--gold);margin-top:44px">✦ ✦ ✦</div>
+    <hr aria-label="Конец главы">
   </article>
   <div class="wrap" style="max-width:760px"><div class="panel">
     <h3 style="margin-bottom:12px">Содержание</h3><div class="chapter-list">${chs.map((x,i)=>`<a class="chapter-row" href="#/read/${wid}/${x.id}" style="${x.id===cid?'border-color:var(--gold)':''}"><span class="num">${String(i+1).padStart(2,'0')}</span><span style="flex:1"><b style="font-family:var(--serif)">${esc(x.title)}</b></span>${x.id===cid?'<span class="pill gold">сейчас</span>':''}</a>`).join('')}</div>
@@ -419,7 +419,7 @@ function workFormHTML(w){
     <div><span class="small" style="font-weight:800;color:var(--muted)">Обложка: градиент и символ</span>
       <div class="cover-picker" id="coverPick" style="margin:10px 0">${COVERS.map(([f,t])=>`<button type="button" class="swatch ${w.cover?.from===f?'on':''}" data-from="${f}" data-to="${t}" style="background:linear-gradient(140deg,${f},${t})" aria-label="Градиент обложки"></button>`).join('')}</div>
       <div class="chiprow" id="symbolPick">${SYMBOLS.map(s=>`<button type="button" class="chipbtn ${w.cover?.symbol===s?'on':''}" data-s="${s}" style="font-size:1.1rem">${s}</button>`).join('')}</div></div>
-    ${!w.legacyUrl?'<details class="author-design"><summary>Авторское оформление · тема, шрифт и страница</summary><p class="small muted">Стиль применяется ко всем главам. Посетитель сможет выбрать личную тему чтения.</p><div id="workDesigner"></div></details>':''}
+    ${!w.legacyUrl?'<details class="author-design"><summary>Авторское оформление · конструктор страниц</summary><p class="small muted">Стиль применяется ко всем главам. Посетитель сможет выбрать личную тему чтения.</p><div id="workDesigner"></div></details>':''}
     <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" type="submit">${w.id?'Сохранить произведение':'Создать и перейти к главам →'}</button><a class="btn ghost" href="#/studio/works">Отмена</a></div>
   </form>`;
 }

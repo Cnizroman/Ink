@@ -1,0 +1,38 @@
+[
+  {
+    "package": "@fontsource/noto-sans-symbols-2",
+    "family": "Ink Symbols",
+    "version": "5.3.0",
+    "license": "noto-sans-symbols-2-LICENSE.txt",
+    "files": [
+      {
+        "file": "noto-sans-symbols-2-symbols-400-normal.woff2",
+        "sha256": "9c07d511848c274b5430c75bf98d1f2582680ef5f967947bfbdd06b75ca177c2"
+      }
+    ]
+  },
+  {
+    "package": "@fontsource/noto-sans-symbols",
+    "family": "Ink Marks",
+    "version": "5.3.0",
+    "license": "noto-sans-symbols-LICENSE.txt",
+    "files": [
+      {
+        "file": "noto-sans-symbols-symbols-400-normal.woff2",
+        "sha256": "2386dfba50e3a0df9efebd63f5774e4a455bc4c86f47b03eed82fea92ad86e3b"
+      }
+    ]
+  },
+  {
+    "package": "@fontsource/noto-sans-math",
+    "family": "Ink Math",
+    "version": "5.3.0",
+    "license": "noto-sans-math-LICENSE.txt",
+    "files": [
+      {
+        "file": "noto-sans-math-latin-400-normal.woff2",
+        "sha256": "c39a9444f95747345dcbde1032ec0ea2af1db63dccf53a31b38a957bdcf4a01f"
+      }
+    ]
+  }
+]

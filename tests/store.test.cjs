@@ -380,3 +380,13 @@ test('Telegram custom OIDC bypasses built-in discovery only, requests minimal sc
  blocked=true;await assert.rejects(store.beginSocialLink('telegram'),/создан и включён OIDC-провайдер custom:telegram/);assert.equal(ephemeral.get('chernila_social_pending'),undefined);
  blocked=false;await store.beginSocialLink('telegram');owner='other';ctx.location.href=callback+'#access_token=other-session';await store.completeSocialReturn();assert.equal(JSON.parse(ephemeral.get('chernila_social_result')).ok,false);assert.equal(store.session.token,'tg-session');
 });
+
+test('studio v2 capability persists full styles; v1 preserves old settings and rejects unsupported style without a write',async()=>{
+ for(const version of [1,2]){let writes=[];const row={id:'story',author_id:'writer',title:'Story',type:'story',genre:'Драма',reader_style:{},moderation_status:'approved'};
+  const remote=async(url,opts={})=>{const p=new URL(url).pathname;let data=[];if(p.endsWith('/moderation_version'))data=1;if(p.endsWith('/story_studio_version'))data=version;if(p.endsWith('/publication_snapshot'))data={works:[row],chapters:[]};if(p.endsWith('/profiles'))data=[{id:'writer',username:'writer',role:'author'}];if(p.endsWith('/works')){if(['POST','PATCH'].includes(opts.method)){const payload=JSON.parse(opts.body);writes.push(payload);data=[{...row,...payload}];}else data=[row];}return {ok:true,text:async()=>JSON.stringify(data)};};
+  const {store,ctx}=harness({remote,storage:new Map([['chernila_session_v2',JSON.stringify({authorId:'writer',token:'fake'})]])});await store.init();assert.equal(store.studioReady,true);assert.equal(store.studioVersion,version);
+  const style=ctx.InkStory.clean({font:'caveat',pageLayout:'custom',texture:'grid',divider:'moon',size:33}),work={...store.state.works.find(w=>w.id==='story'),readerStyle:style};
+  if(version===2){await store.upsertWork(work);assert.deepEqual(clone(writes[0].reader_style),clone(style));assert.deepEqual(clone(store.state.works.find(w=>w.id==='story').readerStyle),clone(style));}
+  else{await assert.rejects(store.upsertWork(work),/STORY_DESIGN_UPGRADE/);assert.equal(writes.length,0);work.readerStyle={palette:'plum',font:'mono'};await store.upsertWork(work);assert.equal(writes[0].reader_style.palette,'plum');assert.equal(Object.keys(writes[0].reader_style).length,9);}
+ }
+});
