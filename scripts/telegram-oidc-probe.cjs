@@ -17,6 +17,15 @@ function probeRequests(clientId='9174402790',callback=CALLBACK){
   const query=percentSpaces?pairs.map(([k,v])=>encodeURIComponent(k)+'='+encodeURIComponent(v)).join('&'):new URLSearchParams(pairs).toString();
   result.push({label,url:ORIGIN+'/auth?'+query});
  }
+ // Additional anonymous controls. These are NOT viable linking URLs and must
+ // never be fed back into the site's identity-link flow.
+ const base=new URL(result[4].url);
+ const onlyOpenid=new URL(base);onlyOpenid.searchParams.set('scope','openid');result.push({label:'control_openid_only',url:onlyOpenid.href});
+ result.push({label:'control_unescaped_callback',url:base.href.replace(encodeURIComponent(callback),callback)});
+ const doubleEncoded=new URL(base);doubleEncoded.searchParams.set('redirect_uri',encodeURIComponent(callback));result.push({label:'control_double_encoded_callback',url:doubleEncoded.href});
+ const websiteRoot=new URL(base);websiteRoot.searchParams.set('redirect_uri','https://cnizroman.github.io/');result.push({label:'control_website_origin_callback_not_a_link_flow',url:websiteRoot.href});
+ result.push({label:'control_with_site_referrer',url:base.href,referrer:'https://cnizroman.github.io/'});
+ const noClient=new URL(base);noClient.searchParams.delete('client_id');result.push({label:'negative_control_missing_client_id',url:noClient.href});
  return result;
 }
 function summarize(label,status,headers,body){
@@ -34,12 +43,12 @@ function summarize(label,status,headers,body){
  if(headers.location){try{const next=new URL(headers.location,ORIGIN);report.redirect={origin:next.origin,query_keys:[...new Set(next.searchParams.keys())].filter(k=>/^[a-z_]{1,40}$/i.test(k))};}catch(_){report.redirect='unparseable';}}
  return report;
 }
-function get(url){
+function get(url,referrer){
  const target=new URL(url);
  if(target.origin!==ORIGIN||!['/auth','/.well-known/openid-configuration'].includes(target.pathname))throw new Error('Probe destination not allowed');
  return new Promise((resolve,reject)=>{
   // No Cookie, Authorization, API key, browser session, or redirect following.
-  const req=https.get(target,{headers:{'User-Agent':'Mozilla/5.0 (compatible; InkOIDCDiagnostics/1.0)','Accept':'text/html,application/json','Cache-Control':'no-cache'}},res=>{
+  const req=https.get(target,{headers:{'User-Agent':'Mozilla/5.0 (compatible; InkOIDCDiagnostics/1.0)','Accept':'text/html,application/json','Cache-Control':'no-cache',...(referrer?{'Referer':referrer}:{})}},res=>{
    let body='';res.setEncoding('utf8');res.on('data',chunk=>{body+=chunk;if(Buffer.byteLength(body)>2*1024*1024)req.destroy(new Error('Response too large'));});res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,body}));res.on('error',reject);
   });
   req.setTimeout(15000,()=>req.destroy(new Error('Request timed out')));req.on('error',reject);
@@ -48,7 +57,7 @@ function get(url){
 async function main(){
  const reports=[];
  for(const p of probeRequests()){
-  try{const r=await get(p.url);reports.push(summarize(p.label,r.status,r.headers,r.body));}
+  try{const r=await get(p.url,p.referrer);reports.push(summarize(p.label,r.status,r.headers,r.body));}
   catch(e){reports.push({probe:p.label,transport_error:/^[A-Z_0-9]{1,40}$/.test(e.code||'')?e.code:'request_failed'});}
  }
  const report={notice:'Anonymous HTTP diagnosis only. HTTP 200 or HTML is NOT proof of successful Telegram login. No token exchange, consent submission, or Supabase callback is performed.',results:reports};
