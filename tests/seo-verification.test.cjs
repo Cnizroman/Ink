@@ -25,3 +25,11 @@ test('Yandex ownership verification is present once in the static head alongside
   assert.ok(!html.includes('&lt;meta name="yandex-verification"'));
   assert.match(head,/<meta name="google-site-verification"/);
 });
+
+test('Yandex verification HTML file contains the exact token and no injected scripts or redirects',()=>{
+  const html=fs.readFileSync('yandex_f3798107dbb5423d.html','utf8');
+  assert.match(html,/<body>Verification: f3798107dbb5423d<\/body>/);
+  assert.match(html,/<meta http-equiv="Content-Type" content="text\/html; charset=UTF-8">/);
+  assert.doesNotMatch(html,/<script\b|kaspersky|http-equiv=["']refresh|&lt;html|^---/im);
+  assert.equal((html.match(/Verification:/g)||[]).length,1);
+});
