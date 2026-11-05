@@ -48,8 +48,8 @@ const {chromium}=require('playwright-core'),lambda=require('@sparticuz/chromium'
   await page.goto(origin+'/#/');await page.waitForFunction(()=>window.Store?.state);
   await page.evaluate(async()=>{await Store.login({login:'cnizroman',password:'demo1234'});window.savedLegacyPassword=null;Store.setLegacyBookPassword=async(id,password)=>{window.savedLegacyPassword={id,password};};});
   await page.goto(origin+'/#/studio/work/gde-nas-net');await page.waitForSelector('[data-legacy-book]',{state:'attached'});
-  await page.locator('.story-access summary').click();await page.locator('[name=storyPassword]').fill('new-reader-password');await page.locator('[name=confirmStoryPassword]').fill('new-reader-password');await page.locator('#storyPasswordForm button').click();
-  await page.waitForFunction(()=>window.savedLegacyPassword);assert.deepEqual(await page.evaluate(()=>window.savedLegacyPassword),{id:'gde-nas-net',password:'new-reader-password'});
+  await page.locator('.story-access summary').click();await page.locator('[name=storyPassword]').fill('vivid');await page.locator('[name=confirmStoryPassword]').fill('vivid');await page.locator('#storyPasswordForm button').click();
+  await page.waitForFunction(()=>window.savedLegacyPassword);assert.deepEqual(await page.evaluate(()=>window.savedLegacyPassword),{id:'gde-nas-net',password:'vivid'});
   assert.deepEqual(errors,[]);
   // Real service worker: purge a pre-existing plaintext v22 cache and fail closed offline.
   const cacheContext=await browser.newContext(),cachePage=await cacheContext.newPage();
