@@ -6,6 +6,7 @@ test('legacy gate and old alias contain neither reader nor reversible passwords'
   const html=read(name);assert.doesNotMatch(html,/<main\b|<template\b|id="book-content"|const _[pb]\s*=/i);
  }
  assert.doesNotMatch(read('book3.html'),/src="script.js"/);
+ assert.doesNotMatch(read('book3.html'),/Владельцу:|href=["'][^"']*#\/studio\//);
  assert.match(read('book3-final-voice.html'),/url=book3.html/);
  assert.equal(fs.existsSync(require('node:path').join(__dirname,'..','final-voice-with-shot-balanced-2.mp3')),false);
 });
