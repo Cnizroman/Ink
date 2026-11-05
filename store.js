@@ -460,6 +460,15 @@ const Store={
     if(!data?.work||data.work.id!==id||!Array.isArray(data.chapters))throw new Error('Сервер не подтвердил доступ.');
     const w=this.state.works.find(w=>w.id===id);Object.assign(w,mapWork(data.work));this.state.chapters=this.state.chapters.filter(c=>c.workId!==id).concat(data.chapters.map(mapChapter));this.unlockedStories.set(id,{revision:w.moderationRevision,until:Date.now()+15*60*1000});await window.InkFreedom?.hydrate(w,false,password);return w;
   },
+  async setLegacyBookPassword(id,password){
+    const w=this.assertOwnWork(id);if(w.legacyUrl!=='book3.html')throw new Error('Это другая история.');
+    if(this.mode!=='supabase')throw new Error('Войдите в аккаунт владельца.');
+    if(typeof password!=='string'||[...password].length<8||new TextEncoder().encode(password).length>72)throw new Error('Пароль: минимум 8 символов, не более 72 байт UTF-8.');
+    const epoch=this.sessionEpoch;
+    const result=await sbFetch('/rest/v1/rpc/set_legacy_book_password',{method:'POST',body:JSON.stringify({p_password:password})});
+    if(this.sessionEpoch!==epoch)throw new Error('Аккаунт изменился. Обновите страницу.');
+    if(result?.saved!==true)throw new Error('Сервер не подтвердил смену пароля.');
+  },
   async setStoryPassword(id,password){
     const w=this.assertOwnWork(id);if(w.legacyUrl)throw new Error('Пароль исходного HTML-файла меняется отдельно.');
     if(this.mode!=='supabase'||!this.studioReady)throw new Error('Нужна серверная настройка мастерской. В локальном режиме безопасной парольной защиты нет.');

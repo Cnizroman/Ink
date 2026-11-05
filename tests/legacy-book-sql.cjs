@@ -1,0 +1,41 @@
+process.chdir(require('node:path').resolve(__dirname,'..'));
+const {PGlite}=require('@electric-sql/pglite'),{pgcrypto}=require('@electric-sql/pglite/contrib/pgcrypto');
+const fs=require('node:fs'),assert=require('node:assert/strict');
+(async()=>{
+ const db=new PGlite({extensions:{pgcrypto}});
+ await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb default '{}',email_confirmed_at timestamptz,updated_at timestamptz);`);
+ await db.exec(fs.readFileSync('supabase-platform-schema.sql','utf8'));
+ await db.exec(fs.readFileSync('STORY_STUDIO_SETUP.sql','utf8'));
+ const migration=fs.readFileSync('supabase/migrations/20261105000600_legacy_book_access.sql','utf8');
+ await db.exec(migration);await db.exec(migration);
+ const owner='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
+ await db.exec(`insert into auth.users(id,email,raw_user_meta_data) values('${owner}','owner@example.com','{"username":"owner"}'),('${other}','other@example.com','{"username":"other"}');grant usage on schema public,auth to anon,authenticated;`);
+ const as=async(role,id='')=>db.exec(`reset role;select set_config('test.uid','${id}',false);set role ${role};`);
+ const q=async(sql,args=[])=>(await db.query(sql,args)).rows;
+ const unlock=async password=>(await q('select unlock_legacy_book($1) as result',[password]))[0].result;
+ const set=password=>q('select set_legacy_book_password($1)',[password]);
+ await as('anon');assert.equal((await unlock('test')).error,'unavailable');
+ await db.exec('reset role');await db.exec(`insert into ink_private.legacy_book_access(slug,owner_id,asset_id,content_key,password_hash) values('book3','${owner}',repeat('a',64),repeat('b',64),crypt('old-test-password',gen_salt('bf',4)));`);
+ await as('anon');assert.equal((await unlock('old-test-password')).error,'password_not_set');
+ await as('authenticated',owner);await set('old-test-password');await as('anon');
+ await assert.rejects(q('select * from ink_private.legacy_book_access'),/permission denied/);
+ await assert.rejects(q('select * from ink_private.legacy_book_attempts'),/permission denied/);
+ await assert.rejects(set('stolen-password'),/permission denied/);
+ for(const bad of [null,'','wrong','я'.repeat(37)])assert.deepEqual(await unlock(bad),{error:'incorrect_password'});
+ assert.equal((await unlock('old-test-password')).key,'b'.repeat(64));assert.equal((await unlock('old-alternate-password')).error,'incorrect_password');
+ await as('authenticated',other);await assert.rejects(set('stolen-password'),/только владелец/);
+ // Even an unrelated administrator must not be able to change this owner's private password.
+ await db.exec("reset role;select set_config('test.uid','',false)");await db.exec(`update profiles set role='admin' where id='${other}'`);
+ await as('authenticated',other);await assert.rejects(set('stolen-password'),/только владелец/);
+ await as('authenticated',owner);await assert.rejects(set(null),/минимум/);await assert.rejects(set('short'),/минимум/);await assert.rejects(set('я'.repeat(37)),/байт/);
+ await set('new-test-password');await as('anon');
+ assert.equal((await unlock('old-test-password')).error,'incorrect_password');assert.equal((await unlock('old-alternate-password')).error,'incorrect_password');
+ assert.equal((await unlock('new-test-password')).asset_id,'a'.repeat(64));
+ // The 60-request budget is shared, concurrent-safe and includes successful calls.
+ for(let i=3;i<60;i++)assert.equal((await unlock('wrong')).error,'incorrect_password');
+ assert.equal((await unlock('new-test-password')).error,'rate_limit');
+ await db.exec(`reset role;update ink_private.legacy_book_attempts set reset_at=now()-interval '1 second';`);
+ await as('anon');assert.equal((await unlock('new-test-password')).key,'b'.repeat(64));
+ await as('authenticated',owner);await set('reset-test-password');await as('anon');assert.equal((await unlock('reset-test-password')).key,'b'.repeat(64));
+ await db.close();console.log('PASS: legacy private key isolation, owner-only rotation, old-code revocation, validation and throttling');
+})().catch(e=>{console.error(e);process.exit(1);});
