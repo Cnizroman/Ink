@@ -8,6 +8,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
  await db.exec(fs.readFileSync('STORY_STUDIO_SETUP.sql','utf8'));
  const migration=fs.readFileSync('supabase/migrations/20261105000600_legacy_book_access.sql','utf8');
  await db.exec(migration);await db.exec(migration);
+ const hardening=fs.readFileSync('supabase/migrations/20261105000700_legacy_book_hardening.sql','utf8');await db.exec(hardening);await db.exec(hardening);
  const owner='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
  await db.exec(`insert into auth.users(id,email,raw_user_meta_data) values('${owner}','owner@example.com','{"username":"owner"}'),('${other}','other@example.com','{"username":"other"}');grant usage on schema public,auth to anon,authenticated;`);
  const as=async(role,id='')=>db.exec(`reset role;select set_config('test.uid','${id}',false);set role ${role};`);
@@ -27,12 +28,12 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
  // Even an unrelated administrator must not be able to change this owner's private password.
  await db.exec("reset role;select set_config('test.uid','',false)");await db.exec(`update profiles set role='admin' where id='${other}'`);
  await as('authenticated',other);await assert.rejects(set('stolen-password'),/только владелец/);
- await as('authenticated',owner);await assert.rejects(set(null),/минимум/);await assert.rejects(set('short'),/минимум/);await assert.rejects(set('я'.repeat(37)),/байт/);
+ await as('authenticated',owner);await assert.rejects(set(null),/минимум/);await assert.rejects(set('short'),/минимум/);await assert.rejects(set('a'.repeat(15)),/минимум/);await assert.rejects(set('я'.repeat(37)),/байт/);
  await set('new-test-password');await as('anon');
  assert.equal((await unlock('old-test-password')).error,'incorrect_password');assert.equal((await unlock('old-alternate-password')).error,'incorrect_password');
  assert.equal((await unlock('new-test-password')).asset_id,'a'.repeat(64));
- // The 60-request budget is shared, concurrent-safe and includes successful calls.
- for(let i=3;i<60;i++)assert.equal((await unlock('wrong')).error,'incorrect_password');
+ // The 20-request budget is shared, concurrent-safe and includes successful calls.
+ for(let i=3;i<20;i++)assert.equal((await unlock('wrong')).error,'incorrect_password');
  assert.equal((await unlock('new-test-password')).error,'rate_limit');
  await db.exec(`reset role;update ink_private.legacy_book_attempts set reset_at=now()-interval '1 second';`);
  await as('anon');assert.equal((await unlock('new-test-password')).key,'b'.repeat(64));

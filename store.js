@@ -463,7 +463,7 @@ const Store={
   async setLegacyBookPassword(id,password){
     const w=this.assertOwnWork(id);if(w.legacyUrl!=='book3.html')throw new Error('Это другая история.');
     if(this.mode!=='supabase')throw new Error('Войдите в аккаунт владельца.');
-    if(typeof password!=='string'||[...password].length<8||new TextEncoder().encode(password).length>72)throw new Error('Пароль: минимум 8 символов, не более 72 байт UTF-8.');
+    if(typeof password!=='string'||[...password].length<16||new TextEncoder().encode(password).length>72)throw new Error('Пароль: минимум 16 символов, не более 72 байт UTF-8.');
     const epoch=this.sessionEpoch;
     const result=await sbFetch('/rest/v1/rpc/set_legacy_book_password',{method:'POST',body:JSON.stringify({p_password:password})});
     if(this.sessionEpoch!==epoch)throw new Error('Аккаунт изменился. Обновите страницу.');
