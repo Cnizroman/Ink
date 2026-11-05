@@ -31,7 +31,7 @@ const {chromium}=require('playwright-core'),lambda=require('@sparticuz/chromium'
   await load();assert.equal(await page.locator('main,.reader-tools,audio,template').count(),0);assert.equal(assetRequests,0);
   await page.locator('#book3Gate').evaluate(el=>el.remove());assert.equal(await page.locator('main,audio').count(),0);assert.equal(assetRequests,0);
   await load();
-  for(const [password,expected] of [['wrong','Неверный пароль'],['network-failure','Нет соединения'],['not-yet-set','Старые коды отключены']]){
+  for(const [password,expected] of [['wrong','Неверный пароль'],['network-failure','Нет соединения'],['not-yet-set','Доступ не подтверждён']]){
    await page.locator('#book3Password').fill(password);await page.locator('button[type=submit]').click();
    await page.waitForFunction(text=>document.getElementById('book3AccessStatus').textContent.includes(text),expected);
    assert.equal(await page.locator('main,audio').count(),0);assert.equal(await page.locator('#book3Password').inputValue(),'');assert.equal(assetRequests,0);
