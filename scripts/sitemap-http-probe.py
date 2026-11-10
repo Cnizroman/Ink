@@ -2,6 +2,7 @@
 """Bounded public GET diagnostics. No account, cookies, secrets or protected book requests."""
 import hashlib
 import json
+import os
 import re
 import urllib.error
 import urllib.request
@@ -97,6 +98,10 @@ def main():
     Path('.cache').mkdir(exist_ok=True)
     Path('.cache/sitemap-http-report.json').write_text(output + '\n')
     print(output)
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
+        notice = json.dumps(report, ensure_ascii=False, separators=(',', ':'))
+        notice = notice.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+        print('::notice title=Sitemap HTTP observations::' + notice)
     return 0 if all(report[key] for key in ('http_checks_passed', 'xml_checks_passed', 'robots_checks_passed')) else 1
 
 
