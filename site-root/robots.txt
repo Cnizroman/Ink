@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /Ink/reviews-admin.html
+
+Sitemap: https://cnizroman.github.io/Ink/sitemap.xml

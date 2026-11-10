@@ -33,3 +33,28 @@ test('Yandex verification HTML file contains the exact token and no injected scr
   assert.doesNotMatch(html,/<script\b|kaspersky|http-equiv=["']refresh|&lt;html|^---/im);
   assert.equal((html.match(/Verification:/g)||[]).length,1);
 });
+
+test('host-root verification bundle is standalone and points to Ink without private content',()=>{
+  const home=fs.readFileSync('site-root/index.html','utf8');
+  const robots=fs.readFileSync('site-root/robots.txt','utf8');
+  assert.match(home,/<meta name="yandex-verification" content="f3798107dbb5423d">/);
+  assert.match(home,/<meta name="google-site-verification" content="1noZFLQylrl-iUBmw-c7EK5XvvJ_8Dc96wBANOY7xBA">/);
+  assert.match(home,/<link rel="canonical" href="https:\/\/cnizroman.github.io\/Ink\/">/);
+  assert.match(home,/<meta name="robots" content="noindex,follow">/);
+  assert.match(home,/<a href="https:\/\/cnizroman.github.io\/Ink\/">/);
+  assert.doesNotMatch(home,/<script\b|book3|content_key|publishableKey|supabase|http-equiv=["']refresh/i);
+  assert.equal(fs.readFileSync('site-root/yandex_f3798107dbb5423d.html','utf8'),fs.readFileSync('yandex_f3798107dbb5423d.html','utf8'));
+  assert.ok(fs.existsSync('site-root/.nojekyll'));
+  assert.match(robots,/^User-agent: \*\nAllow: \/\n/m);
+  assert.match(robots,/^Sitemap: https:\/\/cnizroman.github.io\/Ink\/sitemap.xml$/m);
+});
+
+test('sitemap advertises only existing public pages, not the protected story or ciphertext',()=>{
+  const sitemap=fs.readFileSync('sitemap.xml','utf8');
+  assert.match(sitemap,/<urlset xmlns="http:\/\/www.sitemaps.org\/schemas\/sitemap\/0.9">/);
+  const urls=[...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m=>m[1]);
+  assert.ok(urls.length>0);assert.equal(new Set(urls).size,urls.length);
+  assert.doesNotMatch(sitemap,/book3|assets\/protected|legacy-book|studio|password/i);
+  for(const value of urls){const url=new URL(value);assert.equal(url.origin,'https://cnizroman.github.io');assert.ok(url.pathname.startsWith('/Ink/'));assert.ok(fs.existsSync(url.pathname==='/Ink/'?'index.html':url.pathname.slice('/Ink/'.length)));}
+  assert.match(fs.readFileSync('book3.html','utf8'),/name="robots" content="noindex,noarchive,nosnippet"/);
+});
