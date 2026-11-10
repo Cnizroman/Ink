@@ -1,0 +1,35 @@
+name: Public sitemap HTTP diagnosis
+
+on:
+  push:
+    branches: [arena/380f637e-ink]
+    paths:
+      - .github/workflows/sitemap-http-diagnostic.yml
+      - scripts/sitemap-http-probe.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: Check public XML, HTTP responses and robots
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run bounded anonymous requests
+        run: python3 scripts/sitemap-http-probe.py
+      - name: Publish sanitized observations
+        if: always()
+        shell: bash
+        run: |
+          echo '## Sitemap HTTP observations' >> "$GITHUB_STEP_SUMMARY"
+          echo 'A Googlebot User-Agent is NOT a request from Google infrastructure and does not prove Search Console acceptance.' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f .cache/sitemap-http-report.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat .cache/sitemap-http-report.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi

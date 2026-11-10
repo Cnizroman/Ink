@@ -58,3 +58,24 @@ test('sitemap advertises only existing public pages, not the protected story or 
   for(const value of urls){const url=new URL(value);assert.equal(url.origin,'https://cnizroman.github.io');assert.ok(url.pathname.startsWith('/Ink/'));assert.ok(fs.existsSync(url.pathname==='/Ink/'?'index.html':url.pathname.slice('/Ink/'.length)));}
   assert.match(fs.readFileSync('book3.html','utf8'),/name="robots" content="noindex,noarchive,nosnippet"/);
 });
+
+test('plain-text sitemap is UTF-8 without BOM and mirrors only public XML URLs',()=>{
+  const xml=fs.readFileSync('sitemap.xml','utf8');
+  const bytes=fs.readFileSync('sitemap.txt');
+  assert.notDeepEqual([...bytes.subarray(0,3)],[0xef,0xbb,0xbf]);
+  const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
+  const urls=text.trim().split(/\r?\n/);
+  assert.deepEqual(urls,[...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m=>m[1]));
+  assert.ok(text.endsWith('\n'));assert.doesNotMatch(text,/book3|protected|<|>/);
+});
+
+test('HTTP diagnostic is bounded, anonymous, branch-scoped and does not inspect the protected book',()=>{
+  const workflow=fs.readFileSync('.github/workflows/sitemap-http-diagnostic.yml','utf8');
+  const script=fs.readFileSync('scripts/sitemap-http-probe.py','utf8');
+  assert.match(workflow,/branches: \[arena\/380f637e-ink\]/);
+  assert.match(workflow,/contents: read/);assert.match(workflow,/persist-credentials: false/);
+  assert.match(workflow,/timeout-minutes: 4/);assert.doesNotMatch(workflow,/secrets\.|pull_request_target/);
+  assert.match(script,/timeout=20/);assert.match(script,/2_000_001/);
+  assert.match(script,/NOT a request from Google infrastructure/);
+  assert.doesNotMatch(script,/Authorization|Cookie|password|supabase|BOOK3_VAULT/);
+});
