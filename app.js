@@ -115,7 +115,7 @@ function pageHome(){
       <h1>Никого не вспомнят.<br><em>Пока он не напишет.</em></h1>
       <p class="hero-lead">«Чернила» — место, где истории находят читателей, а авторы — друг друга. Публикуйте рассказы, романы, повести, стихи и эссе. Получайте честные рецензии по пяти критериям. Читайте медленно.</p>
       <div class="hero-actions"><a class="btn" href="#/catalog">Начать читать →</a><a class="btn ghost" href="#/studio/new">✒ Опубликовать своё</a></div>
-      </div><div class="hero-art" aria-hidden="true"><div class="hero-art-frame"><img src="assets/ink-app-v2-512.png" alt=""><span class="hero-art-label">ЧИТАЙТЕ МЕДЛЕННО · ПИШИТЕ ЧЕСТНО</span></div><span class="hero-orbit hero-orbit-one"></span><span class="hero-orbit hero-orbit-two"></span></div></div>
+      </div><div class="hero-art" aria-hidden="true"><div class="hero-art-frame"><img src="assets/ink-app-v3-512.png" alt=""><span class="hero-art-label">ЧИТАЙТЕ МЕДЛЕННО · ПИШИТЕ ЧЕСТНО</span></div><span class="hero-orbit hero-orbit-one"></span><span class="hero-orbit hero-orbit-two"></span></div></div>
       <div class="hero-stats">
         <div class="hstat"><b>${publicWorks().length}</b><span>произведений</span></div>
         <div class="hstat"><b>${S.authors.length}</b><span>авторов</span></div>
