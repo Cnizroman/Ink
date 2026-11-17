@@ -496,3 +496,40 @@ html{scroll-padding-top:145px}
 @media(max-width:760px){html{scroll-padding-top:190px}}
 .logo-word{white-space:nowrap}
 @media(min-width:1201px){.topbar-in{gap:12px}.nav{gap:0;margin-left:0;flex-wrap:nowrap}.nav a{padding:8px 9px;white-space:nowrap}.top-search{flex:1;min-width:130px}}
+
+/* Reading, author pages, shelf and workshop refinements. */
+.work-hero-cover{min-width:0;align-self:start}
+.work-cover-caption{display:block;margin-top:12px;font-size:.62rem;letter-spacing:.2em;color:var(--muted);text-align:center;font-weight:700}
+.work-hero .work-meta{margin-top:18px;padding:18px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.work-hero .action-row{align-items:center}
+.group-navigation{background:linear-gradient(145deg,var(--panel2),var(--panel));border-color:var(--line2)}
+.profile-about{padding:8px 0}.profile-bibliography{border-top:1px solid var(--line);margin-top:28px}
+.public-profile .profile-preview-body .avatar{box-shadow:0 6px 22px rgba(0,0,0,.25)}
+.library-page{padding-top:48px;padding-bottom:70px}
+.library-page h1{font-size:clamp(2.2rem,5vw,3.3rem);margin:12px 0}
+.library-controls{display:flex;gap:16px;align-items:end;flex-wrap:wrap;margin-top:26px}
+.library-controls .field{flex:1;min-width:min(220px,100%)}
+.library-continue{padding:18px;gap:18px}
+.library-continue b{font-family:var(--serif);font-size:1.12rem}
+.library-continue-label{font-weight:700;color:var(--gold2);font-size:.85rem;white-space:nowrap}
+.reader-personal{max-width:960px;margin:16px auto 0}
+.reader-options{padding:14px 18px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.reader-options summary{cursor:pointer;font-weight:700;color:var(--text)}
+.reader-options-grid{display:flex;gap:14px;align-items:end;flex-wrap:wrap}
+.reader-options-grid .field{flex:1;min-width:min(200px,100%)}
+.reader-top .chipbtn{min-height:40px}
+#readerContents{scroll-margin-top:200px}
+.workshop-jump{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 20px}
+.workshop-jump button{background:var(--panel);border:1px solid var(--line2);color:var(--text);border-radius:99px;padding:10px 15px;font-size:.85rem;font-weight:700}
+.workshop-jump button:hover,.workshop-jump button:focus-visible{border-color:var(--gold);color:var(--gold2)}
+.workshop .writer-status{margin:0;padding:10px 14px}
+.workshop :is(.writer-modebar,.author-design,.writer-preview,.action-row){scroll-margin-top:180px}
+@media(max-width:760px){
+ .work-hero{gap:22px;padding-top:28px}.work-hero-cover{max-width:250px;width:100%;margin:auto}
+ .work-hero .action-row>*{max-width:100%}.work-hero #shelfSel{max-width:100%}
+ .library-controls{padding:18px}.library-continue{flex-wrap:wrap}.library-continue-label{margin-left:auto}
+ .reader-top{top:0;position:relative}.reader-top .wrap{gap:10px}.reader-top .wrap>span:last-child{margin-left:0!important;width:100%}
+ .reader-personal{width:calc(100% - 40px)}.reader-options-grid{align-items:stretch}.reader-options-grid>.btn{justify-content:center}
+ .workshop-jump{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.workshop-jump button{min-height:44px}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}

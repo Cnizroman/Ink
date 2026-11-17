@@ -82,7 +82,7 @@ function workCard(w){const r=rating(w.id),a=author(w.authorId),prog=Store.progre
   <div class="small muted">✒ <a href="#/author/${a.id}">${esc(a.displayName)}</a> · ${esc(w.genre)} · ${esc(w.ageRating)}</div>
   ${groupsOf(w.id).map(g=>`<a class="small group-link" href="#/group/${encodeURIComponent(g.id)}">${esc(GROUP_KINDS[g.kind])}: ${esc(g.title)}</a>`).join('')}
   <p>${esc(w.description)}</p>
-  ${prog?`<div class="progress-line" title="Прочитано ${Math.round(prog.pct)}%"><i style="width:${prog.pct}%"></i></div>`:''}
+  ${prog?`<div class="progress-line" title="Позиция в списке глав: ${Math.round(prog.pct)}%"><i style="width:${prog.pct}%"></i></div>`:''}
   <div class="work-meta"><span class="rate">${r?('★ '+r.outOf10.toFixed(1)+' · '+r.count+' рец.'):'☆ пока без рецензий'}</span><span>👁 ${fmt(w.views||0)}</span><span>♥ ${likesOf(w.id)}</span>${w.passwordProtected&&!Store.canReadStory(w)?'<span>Главы скрыты</span>':w.legacyUrl?'<span>Полный текст ↗</span>':`<span>${chaptersOf(w.id).length} гл.</span><span>~${readTime(w)} мин</span>`}</div>
   </div></article>`}
 function authorCard(a){const ws=publicWorks().filter(w=>w.authorId===a.id);const likes=ws.reduce((s,w)=>s+likesOf(w.id),0);
@@ -184,8 +184,9 @@ function pageWork(id){
   const a=author(w.authorId), chs=chaptersOf(id), r=rating(id), revs=reviewsOf(id), u=me(), shelf=myShelf(id);
   const similar=publicWorks().filter(x=>x.id!==id&&(x.genre===w.genre||x.type===w.type)).slice(0,4);
   const myReview=u&&revs.find(x=>x.userId===u.id);
+  const savedProgress=Store.progress.get()[id], resume=chs.find(c=>c.id===savedProgress?.chapterId);
   $('#app').innerHTML=`<div class="wrap">
-    ${!Store.isWorkPublic(w)?'<p class="moderation-warning">Предпросмотр: произведение не опубликовано. Его видят только автор и администратор.</p>':''}<div class="work-hero reveal"><div>${coverHTML(w)}</div>
+    ${!Store.isWorkPublic(w)?'<p class="moderation-warning">Предпросмотр: произведение не опубликовано. Его видят только автор и администратор.</p>':''}<div class="work-hero reveal"><div class="work-hero-cover">${coverHTML(w)}<span class="work-cover-caption">ИСТОРИЯ НА «ЧЕРНИЛАХ»</span></div>
     <div><div class="chiprow">${w.legacyUrl?'':`<span class="pill gold">${esc(TYPE_LABEL[w.type]||w.type)}</span>`}<span class="pill">${esc(w.genre)}</span><span class="pill">${esc(STATUS_LABEL[w.status]||w.status)}</span><span class="pill">${esc(w.ageRating)}</span>${w.featured?'<span class="pill gold">✦ Выбор платформы</span>':''}</div>
     <h1 style="margin-top:16px">${esc(w.title)}</h1>${w.subtitle?`<p style="font-family:var(--body);font-style:italic;font-size:1.25rem;color:var(--gold2)">${esc(w.subtitle)}</p>`:''}
     <div class="author-line">${ava(a,'md')}<div><a href="#/author/${a.id}" style="font-family:var(--serif);font-size:1.2rem"><b>${esc(a.displayName)}</b></a><div class="small muted">@${esc(a.username)} · ${followersOf(a.id)} подписчиков</div></div>
@@ -193,7 +194,7 @@ function pageWork(id){
     <p style="font-family:var(--body);font-size:1.18rem;color:var(--muted)">${esc(w.description)}</p>
     <div class="work-meta" style="font-size:.9rem"><span class="rate" style="font-size:1.05rem">${r?`★ ${r.outOf10.toFixed(1)} / 10 · ${r.total.toFixed(1)} из 21 · ${r.count} рец.`:'☆ Рецензий пока нет'}</span><span>👁 ${fmt(w.views||0)} просмотров</span><span>♥ ${likesOf(id)}</span>${w.legacyUrl?'<span>Полный авторский текст</span>':`<span>◈ ${chs.length} глав</span><span>✎ ${fmt(workWords(w))} слов</span><span>⏱ ~${readTime(w)} мин чтения</span>`}${w.passwordProtected?'<span>▣ По паролю</span>':''}<span>обновл. ${esc(w.updatedAt||'')}</span></div>
     <div class="action-row">
-      ${chs.length?`<a class="btn" href="#/read/${id}/${chs[0].id}">Читать →</a>`:''}
+      ${chs.length?`<a class="btn" href="#/read/${id}/${resume?resume.id:chs[0].id}">${resume?'Продолжить чтение →':'Начать чтение →'}</a>${resume?`<a class="btn ghost" href="#/read/${id}/${chs[0].id}">С начала</a>`:''}`:''}
       ${w.legacyUrl?`<a class="btn ${chs.length?'ghost':''}" href="${esc(w.legacyUrl)}">Читать полный текст в исходной читалке ↗</a>`:''}
       <button class="btn ${isLiked(id)?'':'ghost'}" data-action="like" data-id="${id}">${isLiked(id)?'♥ Нравится':'♡ Нравится'}</button>
       <select id="shelfSel" class="input" style="width:auto;border-radius:99px" aria-label="Добавить на полку"><option value="">📚 На полку…</option>${Object.entries(SHELVES).map(([k,v])=>`<option value="${k}" ${shelf===k?'selected':''}>${v}</option>`).join('')}${shelf?'<option value="__remove">Убрать с полки</option>':''}</select>
@@ -237,7 +238,8 @@ function pageWork(id){
     rf.addEventListener('submit',e=>{e.preventDefault();try{Store.addReview(id,new FormData(rf).get('text').trim(),scores);toast('Рецензия опубликована ✦');route();}catch(err){toast(err.message,true)}});}
 }
 
-let readerSettings={theme:'author',size:null};try{const p=JSON.parse(localStorage.getItem('chernila_reader')||'null');if(p){if(['author','dark','sepia','light'].includes(p.theme))readerSettings.theme=p.theme;if(Number.isFinite(p.size))readerSettings.size=Math.max(15,Math.min(28,p.size));}}catch(_){}
+let readerSettings={theme:'author',size:null,width:'author',leading:'author'};try{const p=JSON.parse(localStorage.getItem('chernila_reader')||'null');if(p){if(['author','dark','sepia','light'].includes(p.theme))readerSettings.theme=p.theme;if(Number.isFinite(p.size))readerSettings.size=Math.max(15,Math.min(28,p.size));if(['author','narrow','wide'].includes(p.width))readerSettings.width=p.width;if(['author','compact','relaxed'].includes(p.leading))readerSettings.leading=p.leading;}}catch(_){}
+function saveReaderSettings(){try{localStorage.setItem('chernila_reader',JSON.stringify(readerSettings));}catch(_){toast('Настройки чтения не удалось сохранить в этом браузере',true);}}
 function pageRead(wid,cid){
   const w=work(wid); if(!w) return page404();
   if(!Store.canReadStory(w))return pageStoryGate(w);
@@ -251,9 +253,11 @@ function pageRead(wid,cid){
     <span style="margin-left:auto;display:flex;gap:7px;flex-wrap:wrap">
       <button class="chipbtn" data-action="font" data-v="-1">A−</button><button class="chipbtn" data-action="font" data-v="1">A+</button>
       ${[['author','Авторская'],['dark','Тьма'],['sepia','Бумага'],['light','Свет']].map(([v,l])=>`<button class="chipbtn ${readerSettings.theme===v?'on':''}" data-action="theme" data-v="${v}">${l}</button>`).join('')}
+      <button class="chipbtn" data-action="reader-toc" type="button">Содержание</button>
       <button class="chipbtn ${isLiked(wid)?'on':''}" data-action="like" data-id="${wid}">♥ ${likesOf(wid)}</button>
     </span></div></div>
   ${w.legacyUrl?`<div class="wrap"><div class="panel" style="margin-top:22px;text-align:center">✦ Произведение первого автора платформы. Здесь — начало и аннотация, полный текст открывается в исходной авторской читалке.<br><br><a class="btn" href="${esc(w.legacyUrl)}">Читать «${esc(w.title)}» полностью ↗</a></div></div>`:''}
+  <div class="wrap reader-personal"><details class="reader-options"><summary>Настроить чтение</summary><p class="small muted">Эти настройки только для вас и сохраняются в этом браузере. Авторское оформление произведения не меняется.</p><div class="reader-options-grid"><label class="field">Ширина текста<select id="readerWidth" class="input"><option value="author">Как у автора</option><option value="narrow" ${readerSettings.width==='narrow'?'selected':''}>Уже</option><option value="wide" ${readerSettings.width==='wide'?'selected':''}>Шире</option></select></label><label class="field">Межстрочный интервал<select id="readerLeading" class="input"><option value="author">Как у автора</option><option value="compact" ${readerSettings.leading==='compact'?'selected':''}>Компактнее</option><option value="relaxed" ${readerSettings.leading==='relaxed'?'selected':''}>Свободнее</option></select></label><button type="button" class="btn ghost sm" data-action="reader-reset">Вернуть авторское оформление</button></div></details></div>
   <article class="reader ${readerSettings.theme} ${w.type==='poetry'?'poetry':''} reveal">
     <div class="kicker" style="justify-content:center">${String(idx+1).padStart(2,'0')} / ${String(chs.length).padStart(2,'0')}</div>
     <h1>${esc(c.title)}</h1><div class="r-meta">${esc(w.title)} · ${esc(a.displayName)} · ${fmt(words(c.body))} слов</div>
@@ -261,13 +265,15 @@ function pageRead(wid,cid){
     <hr aria-label="Конец главы">
   </article>
   <div class="wrap" style="max-width:760px"><div class="panel">
-    <h3 style="margin-bottom:12px">Содержание</h3><div class="chapter-list">${chs.map((x,i)=>`<a class="chapter-row" href="#/read/${wid}/${x.id}" style="${x.id===cid?'border-color:var(--gold)':''}"><span class="num">${String(i+1).padStart(2,'0')}</span><span style="flex:1"><b style="font-family:var(--serif)">${esc(x.title)}</b></span>${x.id===cid?'<span class="pill gold">сейчас</span>':''}</a>`).join('')}</div>
+    <h3 id="readerContents" tabindex="-1" style="margin-bottom:12px">Содержание</h3><div class="chapter-list">${chs.map((x,i)=>`<a class="chapter-row" href="#/read/${wid}/${x.id}" style="${x.id===cid?'border-color:var(--gold)':''}"><span class="num">${String(i+1).padStart(2,'0')}</span><span style="flex:1"><b style="font-family:var(--serif)">${esc(x.title)}</b></span>${x.id===cid?'<span class="pill gold">сейчас</span>':''}</a>`).join('')}</div>
     <h3 style="margin:26px 0 6px">Комментарии к главе · ${commentsOf(wid).filter(x=>x.chapterId===cid).length}</h3>
     ${commentsOf(wid).filter(x=>x.chapterId===cid).map(x=>`<div class="comment">${ava(author(x.userId))}<div><b>${esc(x.name)}</b> <span class="small muted">${esc(x.createdAt)}</span><p style="margin:4px 0 0">${esc(x.text)}</p></div></div>`).join('')||'<p class="muted small">К этой главе пока нет комментариев.</p>'}
     ${me()?`<form id="chComment" class="stack" style="margin-top:14px"><textarea class="input" name="text" rows="2" required placeholder="Ваша мысль об этой главе…"></textarea><div><button class="btn sm">Отправить</button></div></form>`:''}
   </div></div>
   <nav class="reader-nav">${prev?`<a class="btn ghost" href="#/read/${wid}/${prev.id}">← ${esc(prev.title)}</a>`:'<span></span>'}${next?`<a class="btn" href="#/read/${wid}/${next.id}">${esc(next.title)} →</a>`:`<a class="btn" href="#/work/${wid}">Завершить и оценить ★</a>`}</nav>`;
   InkStory.apply($('.reader'),w.readerStyle,readerSettings.theme);
+  const readerEl=$('.reader'),readerText=$('.reader-text');if(readerSettings.width!=='author')readerEl.style.width=readerSettings.width==='narrow'?'min(100%, 600px)':'min(100%, 960px)';if(readerSettings.leading!=='author')readerText.style.lineHeight=readerSettings.leading==='compact'?'1.5':'2.2';
+  for(const [selector,key] of [['#readerWidth','width'],['#readerLeading','leading']])$(selector).addEventListener('change',e=>{readerSettings[key]=e.target.value;saveReaderSettings();if(key==='width')readerEl.style.width=readerSettings.width==='author'?'':readerSettings.width==='narrow'?'min(100%, 600px)':'min(100%, 960px)';else readerText.style.lineHeight=readerSettings.leading==='author'?'':readerSettings.leading==='compact'?'1.5':'2.2';});
   Store.progress.set(wid,cid,(idx+1)/chs.length*100);
   const cc=$('#chComment'); if(cc) cc.addEventListener('submit',e=>{e.preventDefault();Store.addComment(wid,new FormData(cc).get('text').trim(),cid);toast('Комментарий к главе опубликован');route();});
   const onScroll=()=>{const d=document.documentElement;const p=d.scrollTop/Math.max(1,d.scrollHeight-d.clientHeight)*100;$('#readProgress').style.width=p+'%'};
@@ -283,7 +289,7 @@ function pageAuthor(id){
   const revs=S.reviews.filter(r=>ws.some(w=>w.id===r.workId));
   $('#app').innerHTML=`<div class="wrap public-profile" style="${profileStyle(a)}">${profilePreview(a)}<header style="padding:24px 0 10px" class="reveal">
     <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
-    <div style="flex:1;min-width:260px"><div class="kicker">${a.founder?'Основатель и первый автор платформы':'Автор «Чернил»'} · с ${esc((a.joinedAt||'').slice(0,7))}</div>
+    <div class="profile-about" style="flex:1;min-width:0"><div class="kicker">Автор «Чернил» · с ${esc((a.joinedAt||'').slice(0,7))}</div>
     <h1 class="sr-only">${esc(a.displayName)}</h1>
 
 
@@ -298,7 +304,7 @@ function pageAuthor(id){
     ${a.username==='cnizroman'?`<section class="block"><div class="panel"><div class="kicker">Наследие платформы</div><h2 style="margin:12px 0">Архив автора «Никто не вспомнит»</h2>
       <p class="muted">«Чернила» выросли из личного литературного проекта Cnizroman. Закулисье тетралогии сохранено полностью:</p>
       <div class="chiprow" style="margin-top:12px">${[['archive-references.html','🔗 Отсылки'],['archive-thoughts.html','💭 Изначальные мысли'],['archive-visual.html','🎨 Визуальный архив'],['archive-cut.html','Вырезанное'],['archive-drafts.html','✍ Черновики']].map(([h,l])=>`<a class="chipbtn" href="${h}">${l} ↗</a>`).join('')}</div></div></section>`:''}
-    <section class="block"><div class="sec-head"><div><div class="kicker">Библиография</div><h2>Произведения автора</h2></div></div>
+    <section class="block profile-bibliography"><div class="sec-head"><div><div class="kicker">Библиография · произведения и циклы</div><h2>Произведения автора</h2></div></div>
     ${ws.length?`<div class="grid works">${workTiles(ws)}</div>`:'<div class="empty"><span class="big">✒</span>Произведений пока нет.</div>'}</section>
     ${revs.length?`<section class="block"><div class="sec-head"><div><div class="kicker">Голоса читателей</div><h2>Последние рецензии на автора</h2></div></div>
     ${revs.slice(0,3).map(r=>`<article class="review"><b>${esc(r.name)}</b> <span class="muted small">о произведении «${esc(work(r.workId)?.title||'')}» · ★ ${reviewTotal(r)}/21</span><p style="font-family:var(--body);font-size:1.08rem;margin-bottom:0">${esc(r.text)}</p></article>`).join('')}</section>`:''}
@@ -329,15 +335,16 @@ function pageLibrary(){
   setNav('library'); const u=me();
   if(!u){$('#app').innerHTML=`<div class="wrap"><div class="empty" style="margin-top:60px"><span class="big">📚</span><h2>Ваша полка ждёт вас</h2><p>Закладки, «хочу прочитать», прочитанное и избранное появятся здесь после входа.</p><a class="btn" href="#/auth">Войти</a></div></div>`;return}
   const groups=Object.entries(SHELVES).map(([k,label])=>({k,label,ws:S.shelves.filter(s=>s.userId===u.id&&s.shelf===k).map(s=>work(s.workId)).filter(w=>Store.isWorkPublic(w))}));
-  const prog=Store.progress.get(); const cont=Object.entries(prog).map(([wid,p])=>({w:work(wid),p})).filter(x=>Store.isWorkPublic(x.w)&&x.p.pct<100);
-  const liked=S.likes.filter(l=>l.userId===u.id).map(l=>work(l.workId)).filter(Boolean);
-  const section=(title,ws)=>ws.length?`<section class="block"><div class="sec-head"><div><h2>${title} · ${ws.length}</h2></div></div><div class="grid works">${workTiles(ws)}</div></section>`:'';
-  $('#app').innerHTML=`<div class="wrap" style="padding-top:48px"><div class="kicker">Личная библиотека · ${esc(u.displayName)}</div><h1 style="font-size:2.6rem;margin:12px 0">Моя полка</h1>
-  ${cont.length?`<section class="block"><div class="sec-head"><div><h2>Продолжить чтение</h2></div></div>${cont.map(({w,p})=>`<a class="rank" href="#/read/${w.id}/${p.chapterId}">${ava(author(w.authorId))}<span style="flex:1"><b style="font-family:var(--serif)">${esc(w.title)}</b><br><span class="small muted">прочитано ${Math.round(p.pct)}%</span><span class="progress-line" style="display:block;margin-top:7px"><i style="width:${p.pct}%"></i></span></span><span class="btn sm">Продолжить →</span></a>`).join('')}</section>`:''}
-  ${groups.map(g=>section(g.label,g.ws)).join('')}
-  ${section('Понравилось',liked)}
-  ${!groups.some(g=>g.ws.length)&&!liked.length&&!cont.length?'<div class="empty" style="margin-top:26px"><span class="big">📚</span>Полка пуста. Загляните в каталог и добавьте первое произведение.<br><br><a class="btn" href="#/catalog">В каталог</a></div>':''}
-  </div>`;
+  const prog=Store.progress.get(); const cont=Object.entries(prog).map(([wid,p])=>{const w=work(wid),chs=w?chaptersOf(wid):[],index=chs.findIndex(c=>c.id===p?.chapterId);return {w,p,chs,index};}).filter(x=>Store.isWorkPublic(x.w)&&x.index>=0&&!x.w.legacyUrl).sort((a,b)=>(b.p.at||0)-(a.p.at||0));
+  const liked=S.likes.filter(l=>l.userId===u.id).map(l=>work(l.workId)).filter(w=>Store.isWorkPublic(w));
+  const order=list=>{const sort=$('#librarySort')?.value||'recent';const result=[...list];if(sort==='title')result.sort((a,b)=>a.title.localeCompare(b.title,'ru'));if(sort==='author')result.sort((a,b)=>author(a.authorId).displayName.localeCompare(author(b.authorId).displayName,'ru')||a.title.localeCompare(b.title,'ru'));return result;};
+  const section=(title,ws)=>ws.length?`<section class="block"><div class="sec-head"><div><h2>${esc(title)} · ${ws.length}</h2></div></div><div class="grid works">${workTiles(order(ws))}</div></section>`:'';
+  $('#app').innerHTML=`<div class="wrap library-page"><div class="kicker">Личная библиотека · ${esc(u.displayName)}</div><h1>Моя полка</h1><p class="muted">Ваши списки и последняя открытая глава — в одном месте.</p>
+  <div class="library-controls panel"><label class="field">Раздел<select id="libraryFilter" class="input"><option value="all">Все разделы</option><option value="continue">Продолжить чтение</option>${groups.map(g=>`<option value="${g.k}">${esc(g.label)}</option>`).join('')}<option value="liked">Понравилось</option></select></label><label class="field">Порядок произведений<select id="librarySort" class="input"><option value="recent">Как добавлены</option><option value="title">По названию</option><option value="author">По автору</option></select></label></div><div id="librarySections"></div></div>`;
+  const render=()=>{const filter=$('#libraryFilter').value;let html='';if((filter==='all'||filter==='continue')&&cont.length){html+=`<section class="block"><div class="sec-head"><div><h2>Продолжить чтение · ${cont.length}</h2><p class="small muted">Последняя открытая глава хранится в этом браузере и может отображаться при входе в другой аккаунт. Это не отметка о прочтении.</p></div></div>${cont.map(({w,p,chs,index})=>`<a class="rank library-continue" href="#/read/${esc(w.id)}/${esc(p.chapterId)}">${ava(author(w.authorId))}<span style="flex:1;min-width:0"><b>${esc(w.title)}</b><br><span class="small muted">Глава ${index+1} из ${chs.length} · ${esc(chs[index].title)}</span><span class="progress-line" style="display:block;margin-top:7px"><i style="width:${Math.round((index+1)/chs.length*100)}%"></i></span></span><span class="library-continue-label">Продолжить →</span></a>`).join('')}</section>`;}
+  html+=groups.filter(g=>filter==='all'||filter===g.k).map(g=>section(g.label,g.ws)).join('');if(filter==='all'||filter==='liked')html+=section('Понравилось',liked);
+  $('#librarySections').innerHTML=html||'<div class="empty" style="margin-top:26px"><span class="big">📚</span>Здесь пока ничего нет. Загляните в каталог и добавьте произведение.<br><br><a class="btn" href="#/catalog">В каталог</a></div>';};
+  $('#libraryFilter').addEventListener('change',render);$('#librarySort').addEventListener('change',render);render();
 }
 
 function studioSide(on){return `<aside class="studio-side" aria-label="Навигация студии">
@@ -668,8 +675,10 @@ document.addEventListener('click',async e=>{
   if(act==='del-chapter'){ if(confirm('Удалить главу?')){await Store.deleteChapter(id);toast('Глава удалена');route();} }
   if(act==='feature'){ const w=work(id); await Store.setFeatured(id,!w.featured); toast(w.featured?'Произведение — на главной':'Убрано с главной'); route(); }
   if(act==='reset'){ if(confirm('Сбросить все локальные данные платформы к стартовым?')) Store.resetDemo(); }
-  if(act==='font'){ readerSettings.size=Math.min(28,Math.max(15,(readerSettings.size||20)+ +el.dataset.v)); localStorage.setItem('chernila_reader',JSON.stringify(readerSettings)); route(); }
-  if(act==='theme'){ readerSettings.theme=el.dataset.v; localStorage.setItem('chernila_reader',JSON.stringify(readerSettings)); route(); }
+  if(act==='font'){ readerSettings.size=Math.min(28,Math.max(15,(readerSettings.size||parseFloat($('.reader .reader-text')?.style.fontSize)||20)+ +el.dataset.v)); saveReaderSettings(); const text=$('.reader .reader-text');if(text)text.style.fontSize=readerSettings.size+'px'; }
+  if(act==='theme'){ readerSettings.theme=el.dataset.v; saveReaderSettings(); route(); }
+  if(act==='reader-toc'){const toc=$('#readerContents');toc?.scrollIntoView({behavior:'smooth',block:'start'});toc?.focus({preventScroll:true});}
+  if(act==='reader-reset'){readerSettings={theme:'author',size:null,width:'author',leading:'author'};saveReaderSettings();route();}
   if(act==='ch-up'||act==='ch-down'){ const c=S.chapters.find(x=>x.id===id); const sibs=chaptersOf(c.workId,true); const i=sibs.indexOf(c); const j=act==='ch-up'?i-1:i+1; if(sibs[j]){const t=c.order;c.order=sibs[j].order;sibs[j].order=t;await Store.upsertChapter(c);await Store.upsertChapter(sibs[j]);route();} }
   }catch(err){toast(err.message,true);}
 });

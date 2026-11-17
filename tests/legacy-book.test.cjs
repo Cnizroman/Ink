@@ -32,7 +32,7 @@ test('text and audio are authenticated AES-GCM ciphertext and require the privat
  assert.throws(()=>pack(source.replace('<p>','<p onclick="steal()">'),Buffer.from('voice')),/Executable/);
 });
 test('old plaintext cache is invalidated and never used as an offline fallback',()=>{
- const sw=read('sw.js');assert.match(sw,/chernila-v24/);assert.match(sw,/final-voice-with-shot-balanced-2/);assert.match(sw,/cache:'no-store'/);
+ const sw=read('sw.js');assert.match(sw,/chernila-v25/);assert.match(sw,/final-voice-with-shot-balanced-2/);assert.match(sw,/cache:'no-store'/);
  const client=read('legacy-book.js');assert.match(client,/unlock_legacy_book/);assert.doesNotMatch(client,/localStorage|sessionStorage|indexedDB/);
  assert.match(client,/SHA-256/);assert.match(client,/pagehide/);assert.match(client,/persisted/);
 });
