@@ -533,3 +533,6 @@ html{scroll-padding-top:145px}
  .workshop-jump{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.workshop-jump button{min-height:44px}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+/* Личная библиотека и отметки в читалке */
+.reader-tools{max-width:1000px}.reader-tools .panel{margin-top:16px}.collection-choices{display:grid;gap:9px;max-height:320px;overflow:auto}.collection-item summary{cursor:pointer;font-weight:700}.bookmark-block{display:none;margin:10px 0 2px auto;padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:.75rem;cursor:pointer}.reader-text.bookmark-select>.bookmark-block{display:block}.bookmark-block:hover,.bookmark-block:focus-visible{color:var(--gold);border-color:var(--gold)}

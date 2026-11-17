@@ -73,7 +73,7 @@ function pageGroup(id){
     <div class="kicker">${esc(GROUP_KINDS[g.kind])} · Произведений: ${ws.length}</div><h1>${esc(g.title)}</h1>
     <p class="muted">${esc(g.description)}</p><p>Автор: <a class="more" href="#/author/${g.authorId}">${esc(author(g.authorId).displayName)}</a></p>
     ${me()?.id===g.authorId?`<a class="btn ghost sm" href="#/studio/groups/${encodeURIComponent(g.id)}">Редактировать группу</a>`:''}
-    <section class="block"><h2>Порядок чтения</h2><div class="chapter-list">${ws.map((w,i)=>`<a class="chapter-row" href="#/work/${w.id}"><span class="num">${i+1}</span><span style="flex:1"><b>${esc(w.title)}</b><br><span class="small muted">${esc(w.subtitle||w.genre)}</span></span><span>Открыть →</span></a>`).join('')||'<p class="muted">В группе пока нет доступных произведений.</p>'}</div></section></div>`;
+    <section class="block"><div class="sec-head"><div><h2>Порядок чтения</h2><p class="small muted">Книги объединены в авторском порядке. Недоступные и неопубликованные произведения не показываются.</p></div>${ws[0]?`<a class="btn sm" href="#/work/${encodeURIComponent(ws[0].id)}">Начать с первой книги →</a>`:''}</div><div class="chapter-list">${ws.map((w,i)=>`<a class="chapter-row" href="#/work/${w.id}"><span class="num">${i+1}</span><span style="flex:1"><b>${esc(w.title)}</b><br><span class="small muted">${esc(w.subtitle||w.genre)}</span></span><span>Открыть →</span></a>`).join('')||'<p class="muted">В группе пока нет доступных произведений.</p>'}</div></section></div>`;
 }
 function workCard(w){const r=rating(w.id),a=author(w.authorId),prog=Store.progress.get()[w.id];
   return `<article class="work-card reveal"><a href="#/work/${w.id}" aria-label="${esc(w.title)}">${coverHTML(w)}</a>
@@ -95,9 +95,10 @@ function toast(msg,err){const t=$('#toast');t.textContent=msg;t.className='toast
 function needAuth(){ if(me()) return true; toast('Войдите или зарегистрируйтесь, чтобы продолжить',true); location.hash='#/auth'; return false; }
 function setNav(key){$$('#mainNav a').forEach(a=>a.classList.toggle('on',a.dataset.nav===key)); $('#readProgress').style.width='0'}
 function renderUserChip(){const u=me();InkTheme.activate(u?.id); $('#userChip').innerHTML = u
-  ? `<a href="#/author/${u.id}" style="display:flex;align-items:center;gap:9px">${ava(u)}<span class="uname" style="font-weight:700">${esc(u.displayName)}</span></a><a class="btn sm" href="#/studio/new">+ Писать</a><button class="btn ghost sm" data-action="logout">Выйти</button>`
+  ? `<a href="#/author/${u.id}" style="display:flex;align-items:center;gap:9px">${ava(u)}<span class="uname" style="font-weight:700">${esc(u.displayName)}</span></a><a class="btn ghost sm" href="#/reader-tools" id="readerToolsLink">♧ Уведомления и закладки</a><a class="btn sm" href="#/studio/new">+ Писать</a><button class="btn ghost sm" data-action="logout">Выйти</button>`
   : `<a class="btn ghost sm" href="#/auth">Войти</a><a class="btn sm" href="#/auth?mode=signup">Стать автором</a>`;
   $('#modeBanner').hidden = Store.mode==='supabase';
+  if(u&&Store.mode==='supabase'){const owner=u.id;Store.reader.list('notifications').then(rows=>{const link=$('#readerToolsLink');if(link&&me()?.id===owner){const n=rows.filter(x=>!x.read_at).length;if(n)link.textContent='♧ Уведомления: '+n+' · закладки';}}).catch(()=>{});}
 }
 
 /* ================= СТРАНИЦЫ ================= */
@@ -253,7 +254,7 @@ function pageRead(wid,cid){
     <span style="margin-left:auto;display:flex;gap:7px;flex-wrap:wrap">
       <button class="chipbtn" data-action="font" data-v="-1">A−</button><button class="chipbtn" data-action="font" data-v="1">A+</button>
       ${[['author','Авторская'],['dark','Тьма'],['sepia','Бумага'],['light','Свет']].map(([v,l])=>`<button class="chipbtn ${readerSettings.theme===v?'on':''}" data-action="theme" data-v="${v}">${l}</button>`).join('')}
-      <button class="chipbtn" data-action="reader-toc" type="button">Содержание</button>
+      <button class="chipbtn" data-action="reader-toc" type="button">Содержание</button>${me()?'<button class="chipbtn" id="bookmarkMode" type="button" aria-pressed="false">☆ Отметить место</button>':''}
       <button class="chipbtn ${isLiked(wid)?'on':''}" data-action="like" data-id="${wid}">♥ ${likesOf(wid)}</button>
     </span></div></div>
   ${w.legacyUrl?`<div class="wrap"><div class="panel" style="margin-top:22px;text-align:center">✦ Произведение первого автора платформы. Здесь — начало и аннотация, полный текст открывается в исходной авторской читалке.<br><br><a class="btn" href="${esc(w.legacyUrl)}">Читать «${esc(w.title)}» полностью ↗</a></div></div>`:''}
@@ -274,6 +275,12 @@ function pageRead(wid,cid){
   InkStory.apply($('.reader'),w.readerStyle,readerSettings.theme);
   const readerEl=$('.reader'),readerText=$('.reader-text');if(readerSettings.width!=='author')readerEl.style.width=readerSettings.width==='narrow'?'min(100%, 600px)':'min(100%, 960px)';if(readerSettings.leading!=='author')readerText.style.lineHeight=readerSettings.leading==='compact'?'1.5':'2.2';
   for(const [selector,key] of [['#readerWidth','width'],['#readerLeading','leading']])$(selector).addEventListener('change',e=>{readerSettings[key]=e.target.value;saveReaderSettings();if(key==='width')readerEl.style.width=readerSettings.width==='author'?'':readerSettings.width==='narrow'?'min(100%, 600px)':'min(100%, 960px)';else readerText.style.lineHeight=readerSettings.leading==='author'?'':readerSettings.leading==='compact'?'1.5':'2.2';});
+  // Each bookmark points to an existing rendered top-level text block, never to copied text.
+  if(me()&&Store.canReadStory(w)){
+    $('#bookmarkMode').addEventListener('click',e=>{const active=readerText.classList.toggle('bookmark-select');e.currentTarget.setAttribute('aria-pressed',String(active));toast(active?'Выберите место в тексте':'Режим закладок выключен');});
+    const blocks=[...readerText.children];blocks.forEach((block,index)=>{const button=document.createElement('button');button.type='button';button.className='bookmark-block';button.textContent='☆ Закладка';button.setAttribute('aria-label','Добавить закладку: место '+(index+1));block.before(button);button.addEventListener('click',async()=>{try{await Store.reader.addBookmark(wid,cid,index);readerText.classList.remove('bookmark-select');$('#bookmarkMode')?.setAttribute('aria-pressed','false');toast('Закладка сохранена в библиотеке');}catch(e){toast(e.code==='23505'?'Закладка на этом месте уже есть':e.message,true);}});});
+    const position=new URLSearchParams(location.hash.split('?')[1]||'').get('bookmark');if(position!==null&&/^\d+$/.test(position)){const target=blocks[Number(position)];if(target)setTimeout(()=>target.scrollIntoView({block:'center'}),100);else toast('Место закладки больше не найдено: текст мог измениться.',true);}
+  }
   Store.progress.set(wid,cid,(idx+1)/chs.length*100);
   const cc=$('#chComment'); if(cc) cc.addEventListener('submit',e=>{e.preventDefault();Store.addComment(wid,new FormData(cc).get('text').trim(),cid);toast('Комментарий к главе опубликован');route();});
   const onScroll=()=>{const d=document.documentElement;const p=d.scrollTop/Math.max(1,d.scrollHeight-d.clientHeight)*100;$('#readProgress').style.width=p+'%'};
@@ -340,11 +347,31 @@ function pageLibrary(){
   const order=list=>{const sort=$('#librarySort')?.value||'recent';const result=[...list];if(sort==='title')result.sort((a,b)=>a.title.localeCompare(b.title,'ru'));if(sort==='author')result.sort((a,b)=>author(a.authorId).displayName.localeCompare(author(b.authorId).displayName,'ru')||a.title.localeCompare(b.title,'ru'));return result;};
   const section=(title,ws)=>ws.length?`<section class="block"><div class="sec-head"><div><h2>${esc(title)} · ${ws.length}</h2></div></div><div class="grid works">${workTiles(order(ws))}</div></section>`:'';
   $('#app').innerHTML=`<div class="wrap library-page"><div class="kicker">Личная библиотека · ${esc(u.displayName)}</div><h1>Моя полка</h1><p class="muted">Ваши списки и последняя открытая глава — в одном месте.</p>
-  <div class="library-controls panel"><label class="field">Раздел<select id="libraryFilter" class="input"><option value="all">Все разделы</option><option value="continue">Продолжить чтение</option>${groups.map(g=>`<option value="${g.k}">${esc(g.label)}</option>`).join('')}<option value="liked">Понравилось</option></select></label><label class="field">Порядок произведений<select id="librarySort" class="input"><option value="recent">Как добавлены</option><option value="title">По названию</option><option value="author">По автору</option></select></label></div><div id="librarySections"></div></div>`;
+  <div class="action-row"><a class="btn ghost" href="#/reader-tools">Подборки, закладки и уведомления →</a></div><div class="library-controls panel"><label class="field">Раздел<select id="libraryFilter" class="input"><option value="all">Все разделы</option><option value="continue">Продолжить чтение</option>${groups.map(g=>`<option value="${g.k}">${esc(g.label)}</option>`).join('')}<option value="liked">Понравилось</option></select></label><label class="field">Порядок произведений<select id="librarySort" class="input"><option value="recent">Как добавлены</option><option value="title">По названию</option><option value="author">По автору</option></select></label></div><div id="librarySections"></div></div>`;
   const render=()=>{const filter=$('#libraryFilter').value;let html='';if((filter==='all'||filter==='continue')&&cont.length){html+=`<section class="block"><div class="sec-head"><div><h2>Продолжить чтение · ${cont.length}</h2><p class="small muted">Последняя открытая глава хранится в этом браузере и может отображаться при входе в другой аккаунт. Это не отметка о прочтении.</p></div></div>${cont.map(({w,p,chs,index})=>`<a class="rank library-continue" href="#/read/${esc(w.id)}/${esc(p.chapterId)}">${ava(author(w.authorId))}<span style="flex:1;min-width:0"><b>${esc(w.title)}</b><br><span class="small muted">Глава ${index+1} из ${chs.length} · ${esc(chs[index].title)}</span><span class="progress-line" style="display:block;margin-top:7px"><i style="width:${Math.round((index+1)/chs.length*100)}%"></i></span></span><span class="library-continue-label">Продолжить →</span></a>`).join('')}</section>`;}
   html+=groups.filter(g=>filter==='all'||filter===g.k).map(g=>section(g.label,g.ws)).join('');if(filter==='all'||filter==='liked')html+=section('Понравилось',liked);
   $('#librarySections').innerHTML=html||'<div class="empty" style="margin-top:26px"><span class="big">📚</span>Здесь пока ничего нет. Загляните в каталог и добавьте произведение.<br><br><a class="btn" href="#/catalog">В каталог</a></div>';};
   $('#libraryFilter').addEventListener('change',render);$('#librarySort').addEventListener('change',render);render();
+}
+
+// Private account tools. Never render text from locked or unavailable works.
+async function pageReaderTools(){
+ setNav('library');if(!me()){pageLibrary();return;}
+ const owner=me().id,root=$('#app');root.innerHTML='<div class="wrap"><h1>Моя библиотека</h1><p>Загрузка…</p></div>';
+ try{
+  const [collections,bookmarks,notifications,settings]=await Promise.all(['collections','bookmarks','notifications','settings'].map(k=>Store.reader.list(k)));
+  if(!root.isConnected||location.hash.split('?')[0]!=='#/reader-tools'||me()?.id!==owner)return;
+  const labels={review_pending:'Произведение ожидает проверки',review_approved:'Произведение одобрено',review_rejected:'Произведение возвращено на доработку',comment:'Новый комментарий',publication:'Новое опубликованное произведение или глава'};
+  root.innerHTML=`<div class="wrap reader-tools"><a class="more" href="#/library">← Моя полка</a><h1>Подборки и закладки</h1><p class="muted">Личные данные видны только вам. ${Store.mode==='supabase'?'Сохраняются в аккаунте.':'Локальный режим: данные только в этом браузере.'}</p>
+  <section class="block panel"><h2>Мои подборки</h2><form id="collectionCreate" class="action-row"><label class="field">Название<input name="title" class="input" maxlength="80" required></label><button class="btn">Создать подборку</button></form><div id="collectionList">${collections.map(c=>`<details class="panel collection-item"><summary>${esc(c.title)} · ${c.work_ids.length} произведений</summary><div class="chiprow">${c.work_ids.map(id=>work(id)).filter(w=>Store.isWorkPublic(w)).map(w=>`<a class="chipbtn" href="#/work/${encodeURIComponent(w.id)}">${esc(w.title)} →</a>`).join('')}</div><form data-collection="${esc(c.id)}" class="stack"><label class="field">Название<input class="input" name="title" value="${esc(c.title)}" maxlength="80" required></label><p class="small muted">Выберите существующие доступные произведения. Недоступные сохранятся в подборке, но не отображаются.</p><div class="collection-choices">${publicWorks().map(w=>`<label class="check-field"><input type="checkbox" name="work" value="${esc(w.id)}" ${c.work_ids.includes(w.id)?'checked':''}> ${esc(w.title)} · ${esc(author(w.authorId).displayName)}</label>`).join('')||'<p>Нет доступных произведений.</p>'}</div><div class="action-row"><button class="btn sm">Сохранить</button><button type="button" class="btn ghost sm" data-delete-collection="${esc(c.id)}">Удалить подборку</button></div></form></details>`).join('')||'<p class="muted">Пока нет подборок.</p>'}</div></section>
+  <section class="block panel"><h2>Закладки</h2><p class="small muted">Закладки добавляются у абзацев в читалке. Если текст изменится, позиция может сдвинуться. В отдельных старых читалках эта функция недоступна.</p>${bookmarks.map(b=>{const w=work(b.work_id),ch=w&&Store.canReadStory(w)&&chaptersOf(w.id).find(c=>c.id===b.chapter_id);return `<div class="version-row"><div>${w&&ch?`<a href="#/read/${encodeURIComponent(w.id)}/${encodeURIComponent(ch.id)}?bookmark=${b.block_index}"><b>${esc(w.title)} · ${esc(ch.title)}</b> →</a>`:'<span class="muted">Произведение или глава недоступны</span>'}<br><span class="small muted">Место ${Number(b.block_index)+1} · ${esc(new Date(b.created_at).toLocaleString('ru'))}</span></div><button class="btn ghost sm" data-delete-bookmark="${esc(b.id)}">Удалить</button></div>`}).join('')||'<p class="muted">Закладок пока нет.</p>'}</section>
+  <section class="block panel"><h2>Уведомления</h2><p class="small muted">Только внутри сайта. Уведомления приходят после включения функции; старые события не добавляются задним числом.</p><form id="notificationSettings" class="stack">${[['moderation','Проверка произведений'],['comments','Комментарии к моим произведениям'],['publications','Публикации авторов, на которых я подписан']].map(([key,label])=>`<label class="check-field"><input type="checkbox" name="${key}" ${settings[0]?.[key]!==false?'checked':''}> ${label}</label>`).join('')}<div><button class="btn ghost sm">Сохранить настройки</button></div></form><div>${notifications.map(n=>`<div class="version-row"><div><b>${n.read_at?'':'● '}${esc(labels[n.kind]||'Уведомление')}</b><br><span class="small muted">${esc(new Date(n.created_at).toLocaleString('ru'))}</span></div><button type="button" class="btn ghost sm" data-notification="${esc(n.id)}">Открыть</button></div>`).join('')||'<p class="muted">Уведомлений пока нет.</p>'}</div></section></div>`;
+  const refresh=()=>{if(location.hash.split('?')[0]==='#/reader-tools'&&me()?.id===owner)pageReaderTools();};
+  $('#collectionCreate').addEventListener('submit',async e=>{e.preventDefault();try{await Store.reader.createCollection(new FormData(e.currentTarget).get('title'));refresh();toast('Подборка создана');}catch(err){toast(err.message,true);}});
+  $('#collectionList').addEventListener('submit',async e=>{e.preventDefault();const form=e.target,c=collections.find(x=>x.id===form.dataset.collection);if(!c)return;try{const visible=new Set(publicWorks().map(w=>w.id)),data=new FormData(form);await Store.reader.updateCollection({...c,title:data.get('title'),work_ids:[...c.work_ids.filter(id=>!visible.has(id)),...data.getAll('work')]});refresh();toast('Подборка сохранена');}catch(err){toast(err.message,true);}});
+  $('#notificationSettings').addEventListener('submit',async e=>{e.preventDefault();const d=new FormData(e.currentTarget);try{await Store.reader.saveSettings(Object.fromEntries(['moderation','comments','publications'].map(k=>[k,d.has(k)])));toast('Настройки сохранены');}catch(err){toast(err.message,true);}});
+  root.onclick=async e=>{try{const collection=e.target.closest('[data-delete-collection]'),bookmark=e.target.closest('[data-delete-bookmark]'),notification=e.target.closest('[data-notification]');if(collection&&confirm('Удалить подборку?')){await Store.reader.deleteCollection(collection.dataset.deleteCollection);refresh();}if(bookmark){await Store.reader.deleteBookmark(bookmark.dataset.deleteBookmark);refresh();}if(notification){const n=notifications.find(x=>x.id===notification.dataset.notification);if(!n)return;await Store.reader.markRead(n.id);location.hash=n.kind==='review_pending'?'#/admin':n.kind==='review_rejected'?'#/studio/work/'+n.work_id:'#/work/'+n.work_id;}}catch(err){toast(err.message,true);}};
+ }catch(err){if(location.hash.split('?')[0]==='#/reader-tools'&&me()?.id===owner)root.innerHTML=`<div class="wrap"><h1>Моя библиотека</h1><p>Не удалось загрузить данные: ${esc(err.message)}</p><button class="btn" id="readerRetry">Повторить</button></div>`;$('#readerRetry')?.addEventListener('click',pageReaderTools);}
 }
 
 function studioSide(on){return `<aside class="studio-side" aria-label="Навигация студии">
@@ -687,6 +714,7 @@ document.addEventListener('DOMContentLoaded',()=>{});
 
 /* ================= РОУТЕР ================= */
 function route(){
+  $('#app').onclick=null;
   if(disposePage){disposePage();disposePage=null;}
   InkTheme.activate(me()?.id);
   const hash=location.hash.replace(/^#\/?/,''); const [pathQ]=[hash]; const [path,qs]=pathQ.split('?'); const params=new URLSearchParams(qs||'');
@@ -701,6 +729,7 @@ function route(){
     else if(seg[0]==='authors') pageAuthors();
     else if(seg[0]==='feed') pageFeed();
     else if(seg[0]==='library') pageLibrary();
+    else if(seg[0]==='reader-tools') pageReaderTools();
     else if(seg[0]==='auth') pageAuth(params);
     else if(seg[0]==='about') pageAbout();
     else if(seg[0]==='setup') pageSetup();
