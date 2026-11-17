@@ -80,9 +80,9 @@ test('HTTP diagnostic is bounded, anonymous, branch-scoped and does not inspect 
   assert.doesNotMatch(script,/Authorization|Cookie|password|supabase|BOOK3_VAULT/);
 });
 
-test('indexable series page and useful initial home content use real static links and safe metadata',()=>{
+test('indexable series page uses real static links and safe metadata without changing the loading screen',()=>{
  const home=fs.readFileSync('index.html','utf8'),series=fs.readFileSync('nikto-ne-vspomnit.html','utf8'),sitemap=fs.readFileSync('sitemap.xml','utf8');
- const main=home.match(/<main id="app"[\s\S]*?<\/main>/)?.[0];assert.ok(main);assert.match(main,/Чернила — литературная платформа/);assert.match(main,/href="nikto-ne-vspomnit.html"/);assert.match(main,/href="belaya-golova.html"/);
+ const main=home.match(/<main id="app"[\s\S]*?<\/main>/)?.[0];assert.ok(main);assert.match(main,/Чернила наливаются…/);assert.doesNotMatch(main,/<h1|<h2/);assert.match(home,/href="nikto-ne-vspomnit.html"/);assert.match(home,/href="belaya-golova.html"/);
  const json=html=>[...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(m=>JSON.parse(m[1]));
  const site=json(home).find(x=>x['@type']==='WebSite');assert.equal(site.url,'https://cnizroman.github.io/Ink/');assert.equal(site.name,'Чернила');
  const data=json(series).find(x=>x['@type']==='CreativeWorkSeries');assert.equal(data.author.name,'Cnizroman');assert.equal(data.url,'https://cnizroman.github.io/Ink/nikto-ne-vspomnit.html');
