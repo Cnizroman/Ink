@@ -52,7 +52,7 @@ function coverHTML(w){InkFreedom.scheduleCovers();const a=author(w.authorId),c=I
   <span><span class="cov-title">${esc(w.title)}</span><span class="cov-author" style="display:block">${esc(a.displayName)}</span></span></div>`}
 const groupWorks=(g,all=false)=>(g.workIds||[]).map(work).filter(w=>w&&w.authorId===g.authorId&&(all||Store.isWorkPublic(w)));
 const groupsOf=wid=>(S.groups||[]).filter(g=>g.workIds.includes(wid)&&groupWorks(g,true).some(w=>w.id===wid));
-function groupCard(g,matches=[]){const ws=groupWorks(g);return `<article class="panel group-card"><span class="pill gold">${esc(GROUP_KINDS[g.kind]||'Цикл')}</span>
+function groupCard(g,matches=[]){const ws=groupWorks(g);return `<article class="panel group-card"><div class="group-card-top"><span class="group-card-ornament" aria-hidden="true">✦</span><span class="small group-card-caption">ИСТОРИИ ВМЕСТЕ</span></div><span class="pill gold">${esc(GROUP_KINDS[g.kind]||'Цикл')}</span>
   <h3><a href="#/group/${encodeURIComponent(g.id)}">${esc(g.title)}</a></h3><p class="muted">${esc(g.description)}</p>
   <div class="small muted">${esc(author(g.authorId).displayName)} · Произведений: ${groupWorks(g).length}</div>
   <ol class="group-book-list">${ws.map(w=>`<li class="${matches.some(x=>x.id===w.id)?'matched':''}">${esc(w.title)}</li>`).join('')}</ol>
@@ -111,10 +111,11 @@ function pageHome(){
   const cont=Store.progress.get(); const contWorks=Object.keys(cont).map(work).filter(w=>Store.isWorkPublic(w)).slice(0,4);
   $('#app').innerHTML=`
   <div class="wrap">
-    <header class="hero reveal"><div class="kicker">Платформа для авторов · рассказы · романы · стихотворения</div>
+    <header class="hero reveal"><div class="hero-main"><div class="hero-copy"><div class="kicker">Пространство для авторов и читателей</div>
       <h1>Никого не вспомнят.<br><em>Пока он не напишет.</em></h1>
       <p class="hero-lead">«Чернила» — место, где истории находят читателей, а авторы — друг друга. Публикуйте рассказы, романы, повести, стихи и эссе. Получайте честные рецензии по пяти критериям. Читайте медленно.</p>
       <div class="hero-actions"><a class="btn" href="#/catalog">Начать читать →</a><a class="btn ghost" href="#/studio/new">✒ Опубликовать своё</a></div>
+      </div><div class="hero-art" aria-hidden="true"><div class="hero-art-frame"><img src="assets/ink-app-v2-512.png" alt=""><span class="hero-art-label">ЧИТАЙТЕ МЕДЛЕННО · ПИШИТЕ ЧЕСТНО</span></div><span class="hero-orbit hero-orbit-one"></span><span class="hero-orbit hero-orbit-two"></span></div></div>
       <div class="hero-stats">
         <div class="hstat"><b>${publicWorks().length}</b><span>произведений</span></div>
         <div class="hstat"><b>${S.authors.length}</b><span>авторов</span></div>
@@ -339,7 +340,8 @@ function pageLibrary(){
   </div>`;
 }
 
-function studioSide(on){return `<aside class="studio-side">
+function studioSide(on){return `<aside class="studio-side" aria-label="Навигация студии">
+  <div class="studio-side-label">СТУДИЯ АВТОРА <span>✦</span></div>
   <a href="#/studio" class="${on==='dash'?'on':''}">◈ Обзор и статистика</a>
   <a href="#/studio/works" class="${on==='works'?'on':''}">✎ Мои произведения</a>
   <a href="#/studio/groups" class="${on==='groups'?'on':''}">◈ Циклы и группы</a>
